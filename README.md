@@ -1,1 +1,3 @@
-# Hanhan_RAG_Chatbot
+# Hanhan_Chatbot
+
+## Setup
