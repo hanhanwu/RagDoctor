@@ -3,3 +3,5 @@ numpy==2.4.1
 llama-index-retrievers-bm25==0.6.5
 llama-index-postprocessor-cohere-rerank==0.5.1
 datasets==4.5.0
+ipywidgets==8.1.8
+jupyter==1.1.1
