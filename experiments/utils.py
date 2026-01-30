@@ -42,12 +42,13 @@ from llama_index.core.question_gen.llm_generators import LLMQuestionGenerator
 def load_pdf_content(pdf_path: str) -> str:
     """Extract text content from a PDF file."""
     output_file = pdf_path.replace('pdfs/', 'raw_text/').replace('.pdf', '.txt')
+    file_name = pdf_path.replace('pdfs/', '').replace('.pdf', '')
 
     # if text file already exists, load and return it
     if os.path.exists(output_file):
         try:
             with open(output_file, 'r', encoding='utf-8') as f:
-                return f.read()
+                return (file_name, f.read())
         except Exception as e:
             print(f"Error loading cached text {output_file}: {e}")
 
@@ -61,10 +62,10 @@ def load_pdf_content(pdf_path: str) -> str:
         output = "\n".join(parts).strip()
         with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(output)
-        return output
+        return (file_name, output)
     except Exception as e:
         print(f"Error loading PDF {pdf_path}: {e}")
-        return ""
+        return (file_name, "")
     
 
 def get_latest_files_per_company(pdfs_folder='pdfs/'):
