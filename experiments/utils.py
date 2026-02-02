@@ -8,6 +8,8 @@ from datasets import load_dataset
 from pathlib import Path
 import pypdf
 import pdfplumber
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 # Core LlamaIndex imports
 from llama_index.core import (
@@ -93,7 +95,7 @@ def get_latest_files_per_company(pdfs_folder='pdfs/'):
     return {company: pdfs_folder + filename for company, (filename, year) in company_files.items()}
 
 
-def process_item(item, selected_doc_names, loaded_pdf):
+def process_item(item, selected_doc_names, loaded_pdf, selected_metadata_cols):
     """
     Process item in FinanceBench, only items from selected documents.
     """
@@ -102,8 +104,48 @@ def process_item(item, selected_doc_names, loaded_pdf):
     if doc_name not in selected_doc_names:
         return None
     
-    doc_path = 'pdfs/' + doc_name
-    doc_content = loaded_pdf[doc_path]
+    doc_content = loaded_pdf[doc_name]
     metadata = {k: v for k, v in item.items() 
-               if k not in ['question', 'answer']}
+               if k in selected_metadata_cols}
     return Document(text=doc_content, metadata=metadata)
+
+
+def process_items_parallel(dataset_items, selected_doc_names, loaded_pdf, 
+                           selected_metadata_cols, max_workers=10):
+    """
+    Process FinanceBench items in parallel to generate documents.
+    """
+    # Create partial function with fixed arguments
+    process_func = partial(
+        process_item,
+        selected_doc_names=selected_doc_names,
+        loaded_pdf=loaded_pdf,
+        selected_metadata_cols=selected_metadata_cols
+    )
+    
+    # Process items in parallel
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        documents = list(executor.map(process_func, dataset_items))
+    
+    # Filter out None values (items not in selected docs)
+    documents = [doc for doc in documents if doc is not None]
+    
+    return documents
+
+
+# ============================================================================
+# 2. CHUNKING STRATEGY
+# ============================================================================
+def setup_chunking_strategy(embed_model):
+    """
+    Configure semantic chunking for documents
+    - Preserves document structure
+    - Maintains context
+    """
+    # Use semantic splitter that understands document content
+    splitter = SemanticSplitterNodeParser(
+        buffer_size=1,
+        breakpoint_percentile_threshold=95,  # High threshold for stability,
+        embed_model=embed_model,
+    )
+    return splitter
