@@ -149,3 +149,59 @@ def setup_chunking_strategy(embed_model):
         embed_model=embed_model,
     )
     return splitter
+
+
+# ============================================================================
+# 3. HYBRID RETRIEVER (Dense + Sparse)
+# ============================================================================
+class HybridRetriever(BaseRetriever):
+    """
+    Combine dense vector retrieval with BM25 sparse retrieval
+    for queries
+    """
+    def __init__(self, vector_index, documents, top_k: int = 5, alpha: float = 0.5):
+        """
+        Args:
+            vector_index: Vector store index for dense retrieval
+            documents: List of documents for BM25
+            top_k: Number of results to return
+            alpha: Weight for vector retrieval (1-alpha for BM25)
+        """
+        super().__init__()
+        self.vector_index = vector_index
+        self.bm25_retriever = BM25Retriever.from_defaults(
+            nodes=documents,
+            similarity_top_k=top_k
+        )
+        self.top_k = top_k
+        self.alpha = alpha
+    
+    def _retrieve(self, query_bundle):
+        """Retrieve using both dense and sparse methods"""
+        # Dense retrieval
+        vector_nodes = self.vector_index.as_retriever(
+            similarity_top_k=self.top_k
+        ).retrieve(query_bundle)
+        
+        # Sparse retrieval (BM25)
+        bm25_nodes = self.bm25_retriever.retrieve(query_bundle)
+        
+        # Merge results with weighted scoring
+        node_dict = {}
+        
+        # Add vector results
+        for i, node in enumerate(vector_nodes):
+            score = (1 - i / len(vector_nodes)) * self.alpha
+            node_dict[node.node_id] = {'node': node, 'score': score}
+        
+        # Add/merge BM25 results
+        for i, node in enumerate(bm25_nodes):
+            score = (1 - i / len(bm25_nodes)) * (1 - self.alpha)
+            if node.node_id in node_dict:
+                node_dict[node.node_id]['score'] += score
+            else:
+                node_dict[node.node_id] = {'node': node, 'score': score}
+        
+        # Sort by combined score
+        sorted_results = sorted(node_dict.values(), key=lambda x: x['score'], reverse=True)
+        return [r['node'] for r in sorted_results[:self.top_k]]
