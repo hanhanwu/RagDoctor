@@ -25,13 +25,15 @@ from llama_index.core.storage import StorageContext
 from llama_index.core.vector_stores import SimpleVectorStore
 from llama_index.core.schema import NodeWithScore
 
-# Embeddings & LLM
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.llms.openai import OpenAI
+# Reranking
+from llama_index.core.postprocessor.types import BaseNodePostprocessor
+from llama_index.core.schema import NodeWithScore
+from sentence_transformers import CrossEncoder
+from typing import List
+from pydantic import ConfigDict, Field
 
 # Advanced retrieval components
 from llama_index.retrievers.bm25 import BM25Retriever
-from llama_index.postprocessor.cohere_rerank import CohereRerank
 from llama_index.core.retrievers import QueryFusionRetriever
 
 # Query expansion
@@ -205,3 +207,26 @@ class HybridRetriever(BaseRetriever):
         # Sort by combined score
         sorted_results = sorted(node_dict.values(), key=lambda x: x['score'], reverse=True)
         return [r['node'] for r in sorted_results[:self.top_k]]
+
+
+# ============================================================================
+# 4. Reranking
+# ============================================================================
+class CrossEncoderRerank(BaseNodePostprocessor):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    model: CrossEncoder = Field(default=None)
+    top_n: int = 3
+    
+    def __init__(self, model_name="BAAI/bge-reranker-v2-m3", top_n=3, **kwargs):
+        model = CrossEncoder(model_name)
+        super().__init__(model=model, top_n=top_n, **kwargs)
+
+    def _postprocess_nodes(self, nodes: List, query_bundle=None):
+        if not nodes or query_bundle is None:
+            return nodes
+        query = query_bundle.query_str
+        pairs = [(query, n.node.get_content()) for n in nodes]
+        scores = self.model.predict(pairs)
+        reranked = sorted(zip(nodes, scores), key=lambda x: x[1], reverse=True)
+        return [NodeWithScore(node=n.node, score=float(s)) for n, s in reranked[:self.top_n]]
