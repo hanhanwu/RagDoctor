@@ -24,6 +24,7 @@ from llama_index.core.node_parser import SemanticSplitterNodeParser
 from llama_index.core.storage import StorageContext
 from llama_index.core.vector_stores import SimpleVectorStore
 from llama_index.core.schema import NodeWithScore
+from llama_index.core.query_engine import RetrieverQueryEngine
 
 # Reranking
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
@@ -230,3 +231,51 @@ class CrossEncoderRerank(BaseNodePostprocessor):
         scores = self.model.predict(pairs)
         reranked = sorted(zip(nodes, scores), key=lambda x: x[1], reverse=True)
         return [NodeWithScore(node=n.node, score=float(s)) for n, s in reranked[:self.top_n]]
+    
+# ============================================================================
+# 4. QUERY EXPANSION
+# ============================================================================
+FINANCIAL_QUERY_EXPANSION_PROMPT = """
+You are a financial domain expert. Expand the following financial query with 2-3 
+alternative phrasings or related terms that might appear in financial documents.
+
+Query: {query}
+
+Return ONLY the expanded variations as a JSON array, no explanations.
+Example: ["original query", "alternative phrasing 1", "alternative phrasing 2"]
+"""
+
+def expand_financial_query(query: str, llm) -> List[str]:
+    """Expand financial queries with synonyms and alternative phrasings"""
+    prompt = PromptTemplate(FINANCIAL_QUERY_EXPANSION_PROMPT)
+    response = llm.complete(prompt.format(query=query))
+    
+    try:
+        variations = json.loads(response.message)
+        return variations if isinstance(variations, list) else [query]
+    except json.JSONDecodeError:
+        return [query]
+
+# ============================================================================
+# 5. FINANCIAL-SPECIFIC SYSTEM PROMPT
+# ============================================================================
+FINANCIAL_RAG_SYSTEM_PROMPT = """You are an expert financial analyst powered by LlamaIndex.
+Your role is to answer financial questions based on the FinanceBench dataset with precision and clarity.
+
+GUIDELINES:
+1. ALWAYS cite the specific document and section where you found information
+2. Provide confidence levels for numerical data (High/Medium/Low confidence)
+3. For comparative analysis, explicitly compare time periods or companies
+4. If data is missing or unclear, state it explicitly - do NOT make up numbers
+5. Include relevant financial metrics and ratios in your analysis
+6. Flag any assumptions you make about the data
+7. For multi-year or multi-company queries, structure responses with clear breakdowns
+
+FINANCIAL ACCURACY IS CRITICAL. When in doubt, cite your source and indicate uncertainty.
+"""
+
+def get_query_engine(retriever, reranker):
+    return RetrieverQueryEngine.from_args(
+        retriever,
+        node_postprocessors=[reranker]
+    )
