@@ -25,6 +25,7 @@ from llama_index.core.storage import StorageContext
 from llama_index.core.vector_stores import SimpleVectorStore
 from llama_index.core.schema import NodeWithScore
 from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.base.response.schema import Response
 
 # Reranking
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
@@ -245,8 +246,8 @@ Return ONLY the expanded variations as a JSON array, no explanations.
 Example: ["original query", "alternative phrasing 1", "alternative phrasing 2"]
 """
 
-def expand_financial_query(query: str, llm) -> List[str]:
-    """Expand financial queries with synonyms and alternative phrasings"""
+def expand_query(query: str, llm) -> List[str]:
+    """Expand queries with synonyms and alternative phrasings"""
     prompt = PromptTemplate(FINANCIAL_QUERY_EXPANSION_PROMPT)
     response = llm.complete(prompt.format(query=query))
     
@@ -255,6 +256,7 @@ def expand_financial_query(query: str, llm) -> List[str]:
         return variations if isinstance(variations, list) else [query]
     except json.JSONDecodeError:
         return [query]
+
 
 # ============================================================================
 # 5. FINANCIAL-SPECIFIC SYSTEM PROMPT
@@ -277,5 +279,26 @@ FINANCIAL ACCURACY IS CRITICAL. When in doubt, cite your source and indicate unc
 def get_query_engine(retriever, reranker):
     return RetrieverQueryEngine.from_args(
         retriever,
-        node_postprocessors=[reranker]
+        node_postprocessors=[reranker],
+        system_prompt=FINANCIAL_RAG_SYSTEM_PROMPT
     )
+
+
+# ============================================================================
+# 6. GET RAG OUTPUT
+# ============================================================================
+def get_rag_response(query_engine, question: str, expand_query: bool = True) -> Response:
+        """
+        Query the RAG system with optional query expansion
+        """
+        print(f"\n{'='*60}")
+        print(f"Query: {question}")
+        print(f"{'='*60}")
+        
+        # Expand query for better retrieval
+        if expand_query:
+            variations = expand_query(question, Settings.llm)
+            print(f"Query variations: {variations}")
+        
+        response = query_engine.query(question)
+        return response
