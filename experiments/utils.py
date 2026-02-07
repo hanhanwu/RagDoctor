@@ -1,28 +1,19 @@
 import os
 import re
-from typing import List, Optional, Dict, Any
-import json
-from datetime import datetime
-import numpy as np
-from datasets import load_dataset
-from pathlib import Path
+from typing import List, Optional
+import torch
 import pypdf
-import pdfplumber
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 # Core LlamaIndex imports
 from llama_index.core import (
-    VectorStoreIndex,
-    SimpleDirectoryReader,
     Document,
     Settings,
     PromptTemplate
 )
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.node_parser import SemanticSplitterNodeParser
-from llama_index.core.storage import StorageContext
-from llama_index.core.vector_stores import SimpleVectorStore
 from llama_index.core.schema import NodeWithScore
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.base.response.schema import Response
@@ -36,11 +27,7 @@ from pydantic import ConfigDict, Field
 
 # Advanced retrieval components
 from llama_index.retrievers.bm25 import BM25Retriever
-from llama_index.core.retrievers import QueryFusionRetriever
 
-# Query expansion
-from llama_index.core.query_engine import SubQuestionQueryEngine
-from llama_index.core.question_gen.llm_generators import LLMQuestionGenerator
 
 # ============================================================================
 # 1. DATA PREPROCESSING
@@ -220,8 +207,10 @@ class CrossEncoderRerank(BaseNodePostprocessor):
     model: CrossEncoder = Field(default=None)
     top_n: int = 3
     
-    def __init__(self, model_name="BAAI/bge-reranker-v2-m3", top_n=3, **kwargs):
-        model = CrossEncoder(model_name)
+    def __init__(self, model_name="BAAI/bge-reranker-v2-m3", top_n=3, device: Optional[str] = None, **kwargs):
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = CrossEncoder(model_name, device=device)
         super().__init__(model=model, top_n=top_n, **kwargs)
 
     def _postprocess_nodes(self, nodes: List, query_bundle=None):
@@ -249,13 +238,9 @@ Example: ["original query", "alternative phrasing 1", "alternative phrasing 2"]
 def expand_query(query: str, llm) -> List[str]:
     """Expand queries with synonyms and alternative phrasings"""
     prompt = PromptTemplate(FINANCIAL_QUERY_EXPANSION_PROMPT)
-    response = llm.complete(prompt.format(query=query))
+    query_variations= llm.complete(prompt.format(query=query))
     
-    try:
-        variations = json.loads(response.message)
-        return variations if isinstance(variations, list) else [query]
-    except json.JSONDecodeError:
-        return [query]
+    return query_variations
 
 
 # ============================================================================
@@ -276,10 +261,11 @@ GUIDELINES:
 FINANCIAL ACCURACY IS CRITICAL. When in doubt, cite your source and indicate uncertainty.
 """
 
-def get_query_engine(retriever, reranker):
+def get_query_engine(retriever, reranker=None):
+    node_postprocessors = [reranker] if reranker is not None else []
     return RetrieverQueryEngine.from_args(
         retriever,
-        node_postprocessors=[reranker],
+        node_postprocessors=node_postprocessors,
         system_prompt=FINANCIAL_RAG_SYSTEM_PROMPT
     )
 
@@ -287,7 +273,7 @@ def get_query_engine(retriever, reranker):
 # ============================================================================
 # 6. GET RAG OUTPUT
 # ============================================================================
-def get_rag_response(query_engine, question: str, expand_query: bool = True) -> Response:
+def get_rag_response(query_engine, question: str, expand_query_enabled: bool = True) -> Response:
         """
         Query the RAG system with optional query expansion
         """
@@ -296,7 +282,7 @@ def get_rag_response(query_engine, question: str, expand_query: bool = True) -> 
         print(f"{'='*60}")
         
         # Expand query for better retrieval
-        if expand_query:
+        if expand_query_enabled:
             variations = expand_query(question, Settings.llm)
             print(f"Query variations: {variations}")
         
