@@ -3,6 +3,7 @@ import re
 from typing import List, Optional
 import torch
 import pypdf
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -273,14 +274,52 @@ def get_query_engine(retriever, reranker=None):
 # ============================================================================
 # 6. GET RAG OUTPUT
 # ============================================================================
-def get_rag_response(query_engine, question: str) -> Response:
-        """
+def get_rag_response(query_engine, question: str, print_query=False) -> Response:
+    """
         Query the RAG system with optional query expansion
-        """
+    """
+    if print_query:
         print(f"\n{'='*60}")
         print(f"Query: {question}")
         print(f"{'='*60}")
         
-        retrieved_nodes = query_engine.retrieve(question)
-        response = query_engine.query(question)
-        return response, retrieved_nodes
+    response = query_engine.query(question)
+    retrieved_nodes = response.source_nodes
+    return response, retrieved_nodes
+
+
+async def _run_one(dct, query_engine):
+    question = dct["question"]
+    expected_answer = dct["answer"]
+
+    # run blocking call in a thread
+    ai_answer, retrieved_nodes = await asyncio.to_thread(
+        get_rag_response, query_engine, question
+    )
+
+    retrieved_lst = [
+        {
+            "metadata": n.metadata["doc_name"],
+            "content": n.get_content(),
+        }
+        for n in retrieved_nodes
+    ]
+
+    return {
+        "question": question,
+        "expected_answer": expected_answer,
+        "ai_answer": str(ai_answer),
+        "retrieved_lst": retrieved_lst,
+    }
+
+
+async def run_eval_async(items, query_engine, concurrency=3):
+    sem = asyncio.Semaphore(concurrency)
+
+    async def bound_run(dct):
+        async with sem:
+            return await _run_one(dct, query_engine)
+
+    tasks = [bound_run(dct) for dct in items]
+    results = await asyncio.gather(*tasks)
+    return results
