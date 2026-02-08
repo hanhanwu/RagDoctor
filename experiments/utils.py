@@ -273,7 +273,7 @@ def get_query_engine(retriever, reranker=None):
 # ============================================================================
 # 6. GET RAG OUTPUT
 # ============================================================================
-def get_rag_response(query_engine, question: str, expand_query_enabled: bool = True) -> Response:
+def get_rag_response(query_engine, question: str) -> Response:
         """
         Query the RAG system with optional query expansion
         """
@@ -281,10 +281,6 @@ def get_rag_response(query_engine, question: str, expand_query_enabled: bool = T
         print(f"Query: {question}")
         print(f"{'='*60}")
         
-        # Expand query for better retrieval
-        if expand_query_enabled:
-            variations = expand_query(question, Settings.llm)
-            print(f"Query variations: {variations}")
-        
+        retrieved_nodes = query_engine.retrieve(question)
         response = query_engine.query(question)
-        return response
+        return response, retrieved_nodes
