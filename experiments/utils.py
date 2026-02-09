@@ -323,3 +323,8 @@ async def run_eval_async(items, query_engine, concurrency=3):
     tasks = [bound_run(dct) for dct in items]
     results = await asyncio.gather(*tasks)
     return results
+
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
