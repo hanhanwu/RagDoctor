@@ -1,6 +1,6 @@
 yaml_config_files: ['m1_config.yaml', 'm2_config.yaml', 'm3_config.yaml']
 llm_models: ['llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'openai/gpt-oss-safeguard-20b']
-embedding_models: ['BAAI/bge-small-en-v1.5', 'thenlper/gte-large', 'BAAI/bge-large-en-v1.5']
+embedding_models: ['BAAI/bge-small-en-v1.5', 'BAAI/bge-large-en-v1.5', 'thenlper/gte-large']
 retriever_params:
   top_k: 1
   alpha: 0.6

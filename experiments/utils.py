@@ -331,7 +331,9 @@ async def run_eval_async(items, query_engine, concurrency=3):
 import os
 import json
 import yaml
+import time
 import asyncio
+from concurrent.futures import ProcessPoolExecutor
 from llama_index.core import Settings
 from llama_index.llms.groq import Groq
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -341,13 +343,38 @@ from llama_index.core import (
     Settings,
 )
 
+
+def get_vector_index(documents, embed_model_str, indexing_storage_dir):
+    Settings.embed_model = HuggingFaceEmbedding(
+                model_name=embed_model_str, 
+                device="cpu",
+                embed_batch_size=16
+            )
+    node_parser = setup_chunking_strategy(embed_model=Settings.embed_model)
+    
+    if os.path.isdir(indexing_storage_dir):
+        storage_context = StorageContext.from_defaults(persist_dir=indexing_storage_dir)
+        vector_index = load_index_from_storage(storage_context)
+    else:
+        vector_index = VectorStoreIndex.from_documents(
+            documents,
+            node_parser=node_parser,
+            show_progress=True
+        )
+        vector_index.storage_context.persist(persist_dir=indexing_storage_dir)
+        print(f"Index saved to {indexing_storage_dir}")
+    return vector_index
+
+
 async def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_str,
                                 retriever_params, indexing_storage_dir,
                                 output_file):
+    start = time.perf_counter()
     Settings.llm = Groq(model=llm_str,temperature=0)
     Settings.embed_model = HuggingFaceEmbedding(
                 model_name=embed_model_str, 
-                device="cpu"
+                device="cpu",
+                embed_batch_size=16
             )
     node_parser = setup_chunking_strategy(embed_model=Settings.embed_model)
     print("Model name:", getattr(Settings.llm, "model", None))
@@ -361,7 +388,7 @@ async def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_
         vector_index = VectorStoreIndex.from_documents(
             documents,
             node_parser=node_parser,
-            show_progress=True
+            show_progress=False
         )
         vector_index.storage_context.persist(persist_dir=indexing_storage_dir)
         print(f"Index saved to {indexing_storage_dir}")
@@ -374,11 +401,13 @@ async def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_
         )
     query_engine = get_query_engine(retriever, reranker=None)
 
-    eval_lst = await run_eval_async(selected_items, query_engine, concurrency=5)
+    eval_lst = await run_eval_async(selected_items, query_engine, concurrency=3)
     print(len(eval_lst))
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(eval_lst, f, ensure_ascii=False, indent=2)
+    elapsed = time.perf_counter() - start
+    print(f"Pipeline finished in {elapsed:.2f}s (index_dir={indexing_storage_dir})")
 
 
 async def run_one(cfg_path, selected_items, documents,):
@@ -400,6 +429,21 @@ async def run_one(cfg_path, selected_items, documents,):
         indexing_storage_dir,
         output_file,
     )
+
+
+def _run_one_sync(cfg_path, selected_items, documents):
+    return asyncio.run(run_one(cfg_path, selected_items, documents))
+
+
+async def run_all_in_processes(cfgs, selected_items, documents, max_workers=2):
+    loop = asyncio.get_running_loop()
+    with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        tasks = [
+            loop.run_in_executor(pool, _run_one_sync, cfg_path, selected_items, documents)
+            for cfg_path in cfgs
+        ]
+        await asyncio.gather(*tasks)
+
 
 # ============================================================================
 # EVALUATION
