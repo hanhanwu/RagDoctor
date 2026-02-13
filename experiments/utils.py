@@ -326,5 +326,55 @@ async def run_eval_async(items, query_engine, concurrency=3):
 
 
 # ============================================================================
+# RAG PIPELINE
+# ============================================================================
+import os
+import json
+import asyncio
+from llama_index.core import Settings
+from llama_index.core import StorageContext, load_index_from_storage
+from llama_index.core import (
+    VectorStoreIndex,
+    Settings,
+)
+
+async def run_llamaindex_rag_pipeline(selected_items, documents, llm, embed_model,
+                                retriever_params, indexing_storage_dir,
+                                output_file):
+    Settings.llm = llm
+    Settings.embed_model = embed_model
+    node_parser = setup_chunking_strategy(embed_model=embed_model)
+    print("Model name:", getattr(Settings.llm, "model", None))
+    print("Model name:", getattr(Settings.embed_model, "model_name",
+                              getattr(Settings.embed_model, "model_id", None)))
+
+    if os.path.isdir(indexing_storage_dir):
+        storage_context = StorageContext.from_defaults(persist_dir=indexing_storage_dir)
+        vector_index = load_index_from_storage(storage_context)
+    else:
+        vector_index = VectorStoreIndex.from_documents(
+            documents,
+            node_parser=node_parser,
+            show_progress=True
+        )
+        vector_index.storage_context.persist(persist_dir=indexing_storage_dir)
+        print(f"Index saved to {indexing_storage_dir}")
+
+    retriever = HybridRetriever(
+            vector_index,
+            documents,
+            top_k=retriever_params["top_k"],
+            alpha=retriever_params["alpha"]
+        )
+    query_engine = get_query_engine(retriever, reranker=None)
+
+    eval_lst = await run_eval_async(selected_items, query_engine, concurrency=5)
+    print(len(eval_lst))
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(eval_lst, f, ensure_ascii=False, indent=2)
+
+
+# ============================================================================
 # EVALUATION
 # ============================================================================
