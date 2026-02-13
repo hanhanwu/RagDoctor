@@ -1,4 +1,4 @@
-# LLM Model Choices
+yaml_config_files: ['m1_config.yaml', 'm2_config.yaml', 'm3_config.yaml']
 llm_models: ['llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'openai/gpt-oss-safeguard-20b']
 embedding_models: ['BAAI/bge-small-en-v1.5', 'thenlper/gte-large', 'BAAI/bge-large-en-v1.5']
 retriever_params:
