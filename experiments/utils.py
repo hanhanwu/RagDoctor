@@ -330,20 +330,26 @@ async def run_eval_async(items, query_engine, concurrency=3):
 # ============================================================================
 import os
 import json
+import yaml
 import asyncio
 from llama_index.core import Settings
+from llama_index.llms.groq import Groq
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import StorageContext, load_index_from_storage
 from llama_index.core import (
     VectorStoreIndex,
     Settings,
 )
 
-async def run_llamaindex_rag_pipeline(selected_items, documents, llm, embed_model,
+async def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_str,
                                 retriever_params, indexing_storage_dir,
                                 output_file):
-    Settings.llm = llm
-    Settings.embed_model = embed_model
-    node_parser = setup_chunking_strategy(embed_model=embed_model)
+    Settings.llm = Groq(model=llm_str,temperature=0)
+    Settings.embed_model = HuggingFaceEmbedding(
+                model_name=embed_model_str, 
+                device="cpu"
+            )
+    node_parser = setup_chunking_strategy(embed_model=Settings.embed_model)
     print("Model name:", getattr(Settings.llm, "model", None))
     print("Model name:", getattr(Settings.embed_model, "model_name",
                               getattr(Settings.embed_model, "model_id", None)))
@@ -374,6 +380,26 @@ async def run_llamaindex_rag_pipeline(selected_items, documents, llm, embed_mode
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(eval_lst, f, ensure_ascii=False, indent=2)
 
+
+async def run_one(cfg_path, selected_items, documents,):
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    llm = cfg["llm_model"]
+    embed_model= cfg["embedding_model"]
+    retriever_params = cfg["retriever_params"]
+    indexing_storage_dir = cfg["indexing_storage_dir"]
+    output_file = cfg["output_file"]
+
+    await run_llamaindex_rag_pipeline(
+        selected_items,
+        documents,
+        llm,
+        embed_model,
+        retriever_params,
+        indexing_storage_dir,
+        output_file,
+    )
 
 # ============================================================================
 # EVALUATION
