@@ -342,20 +342,18 @@ from llama_index.core import (
     VectorStoreIndex,
     Settings,
 )
-
+os.environ["GROQ_API_KEY"] = os.environ["GROQ_TOKEN"]
 
 def get_vector_index(documents, embed_model_str, indexing_storage_dir):
-    Settings.embed_model = HuggingFaceEmbedding(
+    if os.path.isdir(indexing_storage_dir):
+        print(indexing_storage_dir)
+    else:
+        Settings.embed_model = HuggingFaceEmbedding(
                 model_name=embed_model_str, 
                 device="cpu",
                 embed_batch_size=16
             )
-    node_parser = setup_chunking_strategy(embed_model=Settings.embed_model)
-    
-    if os.path.isdir(indexing_storage_dir):
-        storage_context = StorageContext.from_defaults(persist_dir=indexing_storage_dir)
-        vector_index = load_index_from_storage(storage_context)
-    else:
+        node_parser = setup_chunking_strategy(embed_model=Settings.embed_model)
         vector_index = VectorStoreIndex.from_documents(
             documents,
             node_parser=node_parser,
@@ -363,11 +361,10 @@ def get_vector_index(documents, embed_model_str, indexing_storage_dir):
         )
         vector_index.storage_context.persist(persist_dir=indexing_storage_dir)
         print(f"Index saved to {indexing_storage_dir}")
-    return vector_index
 
 
-async def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_str,
-                                retriever_params, indexing_storage_dir,
+def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_str,
+                                vector_index_dir, retriever_params, 
                                 output_file):
     start = time.perf_counter()
     Settings.llm = Groq(model=llm_str,temperature=0)
@@ -376,22 +373,8 @@ async def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_
                 device="cpu",
                 embed_batch_size=16
             )
-    node_parser = setup_chunking_strategy(embed_model=Settings.embed_model)
-    print("Model name:", getattr(Settings.llm, "model", None))
-    print("Model name:", getattr(Settings.embed_model, "model_name",
-                              getattr(Settings.embed_model, "model_id", None)))
-
-    if os.path.isdir(indexing_storage_dir):
-        storage_context = StorageContext.from_defaults(persist_dir=indexing_storage_dir)
-        vector_index = load_index_from_storage(storage_context)
-    else:
-        vector_index = VectorStoreIndex.from_documents(
-            documents,
-            node_parser=node_parser,
-            show_progress=False
-        )
-        vector_index.storage_context.persist(persist_dir=indexing_storage_dir)
-        print(f"Index saved to {indexing_storage_dir}")
+    storage_context = StorageContext.from_defaults(persist_dir=vector_index_dir)
+    vector_index = load_index_from_storage(storage_context)
 
     retriever = HybridRetriever(
             vector_index,
@@ -401,45 +384,42 @@ async def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_
         )
     query_engine = get_query_engine(retriever, reranker=None)
 
-    eval_lst = await run_eval_async(selected_items, query_engine, concurrency=3)
+    eval_lst = asyncio.run(run_eval_async(selected_items, query_engine, concurrency=3))
     print(len(eval_lst))
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(eval_lst, f, ensure_ascii=False, indent=2)
+
     elapsed = time.perf_counter() - start
-    print(f"Pipeline finished in {elapsed:.2f}s (index_dir={indexing_storage_dir})")
+    print(f"Pipeline finished in {elapsed:.2f}s")
 
 
-async def run_one(cfg_path, selected_items, documents,):
+def run_one(cfg_path, selected_items, documents):
     with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    llm = cfg["llm_model"]
-    embed_model= cfg["embedding_model"]
+    llm_str = cfg["llm_model"]
+    embed_model_str = cfg["embedding_model"]
     retriever_params = cfg["retriever_params"]
-    indexing_storage_dir = cfg["indexing_storage_dir"]
     output_file = cfg["output_file"]
+    vector_index_dir = cfg["indexing_storage_dir"]
 
-    await run_llamaindex_rag_pipeline(
+    return run_llamaindex_rag_pipeline(
         selected_items,
         documents,
-        llm,
-        embed_model,
+        llm_str,
+        embed_model_str,
+        vector_index_dir,
         retriever_params,
-        indexing_storage_dir,
         output_file,
     )
-
-
-def _run_one_sync(cfg_path, selected_items, documents):
-    return asyncio.run(run_one(cfg_path, selected_items, documents))
 
 
 async def run_all_in_processes(cfgs, selected_items, documents, max_workers=2):
     loop = asyncio.get_running_loop()
     with ProcessPoolExecutor(max_workers=max_workers) as pool:
         tasks = [
-            loop.run_in_executor(pool, _run_one_sync, cfg_path, selected_items, documents)
+            loop.run_in_executor(pool, run_one, cfg_path, selected_items, documents)
             for cfg_path in cfgs
         ]
         await asyncio.gather(*tasks)
