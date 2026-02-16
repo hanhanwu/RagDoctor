@@ -428,3 +428,65 @@ async def run_all_in_processes(cfgs, selected_items, documents, max_workers=2):
 # ============================================================================
 # EVALUATION
 # ============================================================================
+from pydantic import BaseModel, Field
+from langchain.prompts import PromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from langchain.output_parsers import OutputFixingParser
+
+
+# ------------------------------------ ANSWER USEFULNESS ------------------------------------ #
+class AnswerUsefulness(BaseModel):
+    score: float = Field(description="""Score with:
+                                        1.0: Exceptional answer that excels in all criteria
+                                        0.8: Excellent answer with minor room for improvement
+                                        0.6: Good answer that adequately addresses the USER QUERY
+                                        0.4: Fair answer with significant room for improvement
+                                        0.2: Poor answer that barely addresses the USER QUERY
+                                        0.0: Completely inadequate or irrelevant answer
+                        """)
+    reasoning: str = Field(description="Reasoning for the given score.")
+
+
+async def evaluate_answer_usefulness_async(llm, user_query, ai_answer, referenced_answer, au_prompt_template):
+    base_parser = PydanticOutputParser(pydantic_object=AnswerUsefulness)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=au_prompt_template,
+        input_variables=["user_query", "ai_answer", "referenced_answer"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await chain.ainvoke({
+        "user_query": user_query,
+        "ai_answer": ai_answer,
+        "referenced_answer": referenced_answer
+    })
+    return result
+
+
+async def process_answer_usefulness_record_async(llm, record, au_prompt_template):
+    eval_result = await evaluate_answer_usefulness_async(
+        llm,
+        record['query'],
+        record['answer'],
+        record['referenced_answer'],
+        au_prompt_template
+    )
+    record['answer_usefulness_score'] = eval_result.score
+    record['au_reasoning'] = eval_result.reasoning
+    return record
+
+
+async def get_answer_usefulness_output_async(input_df, llm_model_str, au_prompt_template, model='vertexai'):
+    input_records = input_df.to_dict(orient='records')
+    if model == 'openai':
+        llm = ChatOpenAI(temperature=1, model_name=llm_model_str)  # temperature ahs to be 1 here
+    elif model == 'mistral':
+        llm = ChatMistralAI(temperature=0, model_name=llm_model_str)
+    else:
+        llm = ChatVertexAI(temperature=0, model=llm_model_str)
+    tasks = [process_answer_usefulness_record_async(llm, record, au_prompt_template) for record in input_records]
+    output_lst = await asyncio.gather(*tasks)
+    output_df = pd.DataFrame(output_lst)
+    return output_df
+# ------------------------------------ ANSWER USEFULNESS ------------------------------------ #
