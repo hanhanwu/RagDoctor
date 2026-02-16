@@ -1,5 +1,6 @@
 import os
 import re
+import pandas as pd
 from typing import List, Optional
 import torch
 import pypdf
@@ -434,6 +435,19 @@ from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers import OutputFixingParser
 
 
+def get_eval_input(json_results):
+    records = []
+    for item in json_results:
+        record = {
+            'query': item['question'],
+            'ai_answer': item['ai_answer'],
+            'referenced_answer': item['expected_answer'],
+            'retrieved_content': ''.join(content_dct['content'] for content_dct in item['retrieved_lst']),
+        }
+        records.append(record)
+    return pd.DataFrame(records)
+
+
 # ------------------------------------ ANSWER USEFULNESS ------------------------------------ #
 class AnswerUsefulness(BaseModel):
     score: float = Field(description="""Score with:
@@ -468,7 +482,7 @@ async def process_answer_usefulness_record_async(llm, record, au_prompt_template
     eval_result = await evaluate_answer_usefulness_async(
         llm,
         record['query'],
-        record['answer'],
+        record['ai_answer'],
         record['referenced_answer'],
         au_prompt_template
     )
@@ -477,14 +491,8 @@ async def process_answer_usefulness_record_async(llm, record, au_prompt_template
     return record
 
 
-async def get_answer_usefulness_output_async(input_df, llm_model_str, au_prompt_template, model='vertexai'):
+async def get_answer_usefulness_output_async(input_df, llm, au_prompt_template):
     input_records = input_df.to_dict(orient='records')
-    if model == 'openai':
-        llm = ChatOpenAI(temperature=1, model_name=llm_model_str)  # temperature ahs to be 1 here
-    elif model == 'mistral':
-        llm = ChatMistralAI(temperature=0, model_name=llm_model_str)
-    else:
-        llm = ChatVertexAI(temperature=0, model=llm_model_str)
     tasks = [process_answer_usefulness_record_async(llm, record, au_prompt_template) for record in input_records]
     output_lst = await asyncio.gather(*tasks)
     output_df = pd.DataFrame(output_lst)
