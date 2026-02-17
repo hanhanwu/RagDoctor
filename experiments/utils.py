@@ -448,24 +448,22 @@ def get_eval_input(json_results):
     return pd.DataFrame(records)
 
 
-# ------------------------------------ ANSWER USEFULNESS ------------------------------------ #
-class AnswerUsefulness(BaseModel):
-    score: float = Field(description="""Score with:
-                                        1.0: Exceptional answer that excels in all criteria
-                                        0.8: Excellent answer with minor room for improvement
-                                        0.6: Good answer that adequately addresses the USER QUERY
-                                        0.4: Fair answer with significant room for improvement
-                                        0.2: Poor answer that barely addresses the USER QUERY
-                                        0.0: Completely inadequate or irrelevant answer
+# ------------------------------------ ANSWER ACCURACY ------------------------------------ #
+class AnswerAccuracy(BaseModel):
+    score: int = Field(description="""Score with:
+                                        0: AI's ANSWER is completely irrelevant to the USER QUERY
+                                        1: AI's ANSWER is relevant to the USER QUERY but comparing with the REFERENCED ANSWER, it's inaccurate
+                                        2: AI's ANSWER is relevant to the USER QUERY and partially accurate comparing with the REFERENCED ANSWER
+                                        3: AI's ANSWER is relevant to the USER QUERY and fully accurate comparing with the REFERENCED ANSWER
                         """)
     reasoning: str = Field(description="Reasoning for the given score.")
 
 
-async def evaluate_answer_usefulness_async(llm, user_query, ai_answer, referenced_answer, au_prompt_template):
-    base_parser = PydanticOutputParser(pydantic_object=AnswerUsefulness)
+async def evaluate_answer_accuracy_async(llm, user_query, ai_answer, referenced_answer, ac_prompt_template):
+    base_parser = PydanticOutputParser(pydantic_object=AnswerAccuracy)
     output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
     prompt = PromptTemplate(
-        template=au_prompt_template,
+        template=ac_prompt_template,
         input_variables=["user_query", "ai_answer", "referenced_answer"],
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
     )
@@ -478,23 +476,23 @@ async def evaluate_answer_usefulness_async(llm, user_query, ai_answer, reference
     return result
 
 
-async def process_answer_usefulness_record_async(llm, record, au_prompt_template):
-    eval_result = await evaluate_answer_usefulness_async(
+async def process_answer_accuracy_record_async(llm, record, ac_prompt_template):
+    eval_result = await evaluate_answer_accuracy_async(
         llm,
         record['query'],
         record['ai_answer'],
         record['referenced_answer'],
-        au_prompt_template
+        ac_prompt_template
     )
-    record['answer_usefulness_score'] = eval_result.score
-    record['au_reasoning'] = eval_result.reasoning
+    record['answer_accuracy_score'] = eval_result.score
+    record['ac_reasoning'] = eval_result.reasoning
     return record
 
 
-async def get_answer_usefulness_output_async(input_df, llm, au_prompt_template):
+async def get_answer_accuracy_output_async(input_df, llm, ac_prompt_template):
     input_records = input_df.to_dict(orient='records')
-    tasks = [process_answer_usefulness_record_async(llm, record, au_prompt_template) for record in input_records]
+    tasks = [process_answer_accuracy_record_async(llm, record, ac_prompt_template) for record in input_records]
     output_lst = await asyncio.gather(*tasks)
     output_df = pd.DataFrame(output_lst)
     return output_df
-# ------------------------------------ ANSWER USEFULNESS ------------------------------------ #
+# ------------------------------------ ANSWER ACCURACY ------------------------------------ #
