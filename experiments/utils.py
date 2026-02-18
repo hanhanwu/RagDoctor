@@ -248,17 +248,14 @@ def expand_query(query: str, llm) -> List[str]:
 # ============================================================================
 # 5. FINANCIAL-SPECIFIC SYSTEM PROMPT
 # ============================================================================
-FINANCIAL_RAG_SYSTEM_PROMPT = """You are an expert financial analyst powered by LlamaIndex.
-Your role is to answer financial questions based on the FinanceBench dataset with precision and clarity.
+FINANCIAL_RAG_SYSTEM_PROMPT = """You are a finance expert.
+Your role is to answer financial questions with precision and clarity.
 
 GUIDELINES:
-1. ALWAYS cite the specific document and section where you found information
-2. Provide confidence levels for numerical data (High/Medium/Low confidence)
-3. For comparative analysis, explicitly compare time periods or companies
-4. If data is missing or unclear, state it explicitly - do NOT make up numbers
-5. Include relevant financial metrics and ratios in your analysis
-6. Flag any assumptions you make about the data
-7. For multi-year or multi-company queries, structure responses with clear breakdowns
+- If data is missing or unclear, state it explicitly - do NOT make up numbers
+- Include relevant financial metrics and ratios in your analysis
+- Flag any assumptions you make about the data
+- For complex queries, structure responses with clear breakdowns
 
 FINANCIAL ACCURACY IS CRITICAL. When in doubt, cite your source and indicate uncertainty.
 """
@@ -266,9 +263,9 @@ FINANCIAL ACCURACY IS CRITICAL. When in doubt, cite your source and indicate unc
 def get_query_engine(retriever, reranker=None):
     node_postprocessors = [reranker] if reranker is not None else []
     return RetrieverQueryEngine.from_args(
-        retriever,
-        node_postprocessors=node_postprocessors,
-        system_prompt=FINANCIAL_RAG_SYSTEM_PROMPT
+        retriever,  # retrieving documents
+        node_postprocessors=node_postprocessors,  # a list containing the reranker
+        system_prompt=FINANCIAL_RAG_SYSTEM_PROMPT  # guiding the answer generation
     )
 
 
