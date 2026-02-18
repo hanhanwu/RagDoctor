@@ -11,3 +11,4 @@ langchain-groq==0.3.8
 langchain_community==0.3.29
 langchain==0.3.27
 langchain-core==0.3.83
+openpyxl==3.1.5

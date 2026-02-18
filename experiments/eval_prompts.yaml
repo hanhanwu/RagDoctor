@@ -4,43 +4,57 @@
 # You may not reuse, copy, modify, merge, publish, distribute, sublicense,
 # or exploit this code without Hanhan Wu's EXPLICIT written permission.
 
-# ------------------------------------------ RETRIEVAL RELEVANCY ------------------------------------------ #
-rr_prompt_template: |
-  You are an expert scoring RETRIEVED CONTENT's relevancy based on USER QUERY. 
-    Your task is to assign a relevancy score based on the requirements below:
+# ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
+rq_prompt_template: |
+  You are an expert reviewing the RETRIEVED CONTENT. 
+    Your task is to generate a retrieval quality score based on the requirements below:
 
-    ###INSTRUCTIONS###
-            - Read and understand the full meaning of USER QUERY
-            - RUBRICS:
-                - Only generate the score as 1 or 2 or 3
-                - Scoring as 1: if the RETRIEVED CONTENT has nothing to do with the USER QUERY
-                - Scoring as 2: if the RETRIEVED CONTENT seems relevant to USER QUERY but doesn't answer the USER QUERY
-                - Scoring as 3: if the RETRIEVED CONTENT is relevant to USER QUERY and can directly answer the USER QUERY
+    ### INSTRUCTIONS ###
+            - Read and understand the full meaning of the USER QUERY
+            - Read the CONTEXT and summary its key information relevant to the USER QUERY
+            - Compare the RETRIEVED CONTENT with the USER QUERY and the CONTEXT, and evaluate based on the RUBRICS below:
+                - Only generate the score as 0 or 1 or 2 or 3
+                - Scoring as 0: if the RETRIEVED CONTENT is completely irrelevant to the USER QUERY
+                - Scoring as 1: if the RETRIEVED CONTENT is relevant to the USER QUERY but doesn't contain any critical information from the CONTEXT
+                - Scoring as 2: if the RETRIEVED CONTENT is relevant to the USER QUERY but only partially contains critical information from the CONTEXT
+                - Scoring as 3: if the RETRIEVED CONTENT is relevant to USER QUERY and contains all the critical information from the CONTEXT
             - Provide detailed scoring reasons
 
-    ###EXAMPLE OUTPUT FORMAT###
+    ### EXAMPLE OUTPUT FORMAT ###
             {{
                 "score": 1,
-                "reasoning": The RETRIEVED CONTENT is not relevant to the USER QUERY at all
+                "reasoning": "The RETRIEVED CONTENT is relevant to the USER QUERY but doesn't contain any critical information from the CONTEXT"
             }}
             {{
                 "score": 2,
-                "reasoning": the RETRIEVED CONTENT seems relevant to USER QUERY but doesn't contain the answer of the USER QUERY
+                "reasoning": "The RETRIEVED CONTENT is relevant to the USER QUERY but only partially contains critical information from the CONTEXT"
             }}
             {{
                 "score": 3,
-                "reasoning": the RETRIEVED CONTENT can directly address the USER QUERY
+                "reasoning": "The RETRIEVED CONTENT is relevant to the USER QUERY and contains all the critical information from the CONTEXT"
             }}
+            {{
+                "score": 0,
+                "reasoning": "The RETRIEVED CONTENT is completely irrelevant to the USER QUERY"
+            }}
+
+    ### OUTPUT Requirements ###
+    - Make sure your output reasoning is brief but comprehensive, covering all key points that justify your score
+    - Try to make output reasoning with no more than 200 tokens if you can
+
 
     Here is the USER QUERY:
     {user_query}
+
+    Here is the CONTEXT:
+    {context}
 
     Here is the RETRIEVED CONTENT:
     {retrieved_content}
 
     Your evaluation should follow this format:
     {format_instructions}
-# ------------------------------------------ RETRIEVAL RELEVANCY ------------------------------------------ #
+# ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
 
 
 # ------------------------------------------ ANSWER ACCURACY ------------------------------------------ #
@@ -50,7 +64,7 @@ ac_prompt_template: |
         - Relevance: How well does it address the USER QUERY?
         - Accuracy: Is it correct comparing with the REFERENCED ANSWER?
 
-    ###EVALUATION PROCESS###
+    ### EVALUATION PROCESS ###
     1. **ANALYZE** the USER QUERY and the AI's ANSWER carefully
     2. **EVALUATE** how well the response meets each of the criteria above
     3. **CONSIDER** the overall usefulness of AI's ANSWER
@@ -62,7 +76,7 @@ ac_prompt_template: |
         - 3: AI's ANSWER is relevant to the USER QUERY and fully accurate comparing with the REFERENCED ANSWER
     6. **REASONS** Provide detailed reasons for your score
 
-    ###EXAMPLE OUTPUT FORMAT###
+    ### EXAMPLE OUTPUT FORMAT ###
             {{
                 "score": 3,
                 "reasoning": "AI's ANSWER is not only relevant to the USER QUERY, but also contains all critical info mentioned in the REFERENCED ANSWER"
@@ -80,9 +94,10 @@ ac_prompt_template: |
                 "reasoning": "AI's ANSWER is completely irrelevant to the USER QUERY"
             }}
 
-    ###OUTPUT Requirements###
+    ### OUTPUT Requirements ###
     - Make sure your output reasoning is brief but comprehensive, covering all key points that justify your score
-    - Try to make output reasoning with no more than 60 tokens if you can
+    - Try to make output reasoning with no more than 200 tokens if you can
+
 
     Here is the USER QUERY:
     {user_query}
