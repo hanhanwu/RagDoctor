@@ -291,7 +291,7 @@ def get_rag_response(query_engine, question: str, print_query=False) -> Response
 
 async def _run_one(dct, query_engine):
     question = dct["question"]
-    expected_answer = dct["answer"]
+    expected_answer = dct["ground_truth"]
 
     # run blocking call in a thread
     ai_answer, retrieved_nodes = await asyncio.to_thread(
@@ -345,7 +345,7 @@ from llama_index.core import (
 )
 os.environ["GROQ_API_KEY"] = os.environ["GROQ_TOKEN"]
 
-def get_vector_index(documents, embed_model_str, indexing_storage_dir):
+def create_vector_index(documents, embed_model_str, indexing_storage_dir):
     if os.path.isdir(indexing_storage_dir):
         print(indexing_storage_dir)
     else:
@@ -367,7 +367,6 @@ def get_vector_index(documents, embed_model_str, indexing_storage_dir):
 def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_str,
                                 vector_index_dir, retriever_params, 
                                 output_file):
-    start = time.perf_counter()
     Settings.llm = Groq(model=llm_str,temperature=0)
     Settings.embed_model = HuggingFaceEmbedding(
                 model_name=embed_model_str, 
@@ -390,9 +389,6 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(eval_lst, f, ensure_ascii=False, indent=2)
-
-    elapsed = time.perf_counter() - start
-    print(f"Pipeline finished in {elapsed:.2f}s")
 
 
 def run_one(cfg_path, selected_items, documents):

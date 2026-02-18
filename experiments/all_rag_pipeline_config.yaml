@@ -1,8 +1,17 @@
-yaml_config_files: ['m1_config.yaml', 'm2_config.yaml', 'm3_config.yaml']
-llm_models: ['llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'openai/gpt-oss-safeguard-20b']
-embedding_models: ['BAAI/bge-small-en-v1.5', 'BAAI/bge-large-en-v1.5', 'thenlper/gte-large']
+# yaml_config_files: ['m1_config.yaml', 'm2_config.yaml', 'm3_config.yaml']
+# llm_models: ['llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'openai/gpt-oss-safeguard-20b']
+# embedding_models: ['BAAI/bge-small-en-v1.5', 'BAAI/bge-large-en-v1.5', 'thenlper/gte-large']
+# retriever_params:
+#   top_k: 1
+#   alpha: 0.6
+# indexing_storage_dirs: ['./storage_m1', './storage_m2', './storage_m3']
+# output_files: ['./output/m1.json', './output/m2.json', './output/m3.json']
+
+yaml_config_files: ['m1_config.yaml']
+llm_models: ['llama-3.1-8b-instant']
+embedding_models: ['BAAI/bge-small-en-v1.5']
 retriever_params:
   top_k: 1
   alpha: 0.6
-indexing_storage_dirs: ['./storage_m1', './storage_m2', './storage_m3']
-output_files: ['./output/m1.json', './output/m2.json', './output/m3.json']
+indexing_storage_dirs: ['./storage_m1']
+output_files: ['./output/m1.json']
