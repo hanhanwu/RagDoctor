@@ -1,5 +1,6 @@
 experiments/pdfs/*
 experiments/raw_text/*
+experiments/*raw_text/*
 experiments/storage/*
 experiments/storage*/*
 experiments/output/*
