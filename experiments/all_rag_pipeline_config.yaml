@@ -16,4 +16,5 @@ retriever_params:
 indexing_storage_dirs: ['./storage_m1']
 output_files: ['./output/m1.json']
 eval_rq_output: ['./output/eval_results/m1_rq.xlsx']
-eval_ac_output: ['./output/eval_results/m1_ac.xlsx']
+eval_aq_output: ['./output/eval_results/m1_aq.xlsx']
+eval_all_output: ['./output/eval_results/m1_all.xlsx']
