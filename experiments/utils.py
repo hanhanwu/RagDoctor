@@ -444,11 +444,14 @@ def get_eval_input(json_results):
 # ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
 class RetrievalQuality(BaseModel):
     score: int = Field(description="""Score with:
-                                        - Scoring as 0: if the RETRIEVED CONTENT is completely irrelevant to the USER QUERY
-                                        - Scoring as 1: if the RETRIEVED CONTENT is relevant to the USER QUERY but doesn't contain any critical information from the CONTEXT
-                                        - Scoring as 2: if the RETRIEVED CONTENT is relevant to the USER QUERY but only partially contains critical information from the CONTEXT
-                                        - Scoring as 3: if the RETRIEVED CONTENT is relevant to USER QUERY and contains all the critical information from the CONTEXT
-                        """)
+                - Only generate the score as -1, 0 or 1 or 2 or 3
+                - Scoring as -1: if the RETRIEVED CONTENT is much more relevant to the USER QUERY than the CONTEXT
+                - Scoring as 0: if the RETRIEVED CONTENT is completely irrelevant to the USER QUERY
+                - If the CONTEXT is strongly relevant to the USER QUERY:
+                    - Scoring as 1: if the RETRIEVED CONTENT is relevant to the USER QUERY but doesn't contain any critical information from the CONTEXT
+                    - Scoring as 2: if the RETRIEVED CONTENT is relevant to the USER QUERY but only partially contains critical information from the CONTEXT
+                    - Scoring as 3: if the RETRIEVED CONTENT is relevant to USER QUERY and contains all the critical information from the CONTEXT
+            """)
     reasoning: str = Field(description="Reasoning for the given score.")
 
 
@@ -491,22 +494,26 @@ async def get_retrieval_quality_output_async(input_df, llm, rq_prompt_template):
 # ------------------------------------ QUERY QUALITY ------------------------------------ #
 
 
-# ------------------------------------ ANSWER ACCURACY ------------------------------------ #
-class AnswerAccuracy(BaseModel):
+# ------------------------------------ ANSWER QUALITY ------------------------------------ #
+class AnswerQuality(BaseModel):
     score: int = Field(description="""Score with:
-                                        0: AI's ANSWER is completely irrelevant to the USER QUERY
-                                        1: AI's ANSWER is relevant to the USER QUERY but comparing with the REFERENCED ANSWER, it's inaccurate
-                                        2: AI's ANSWER is relevant to the USER QUERY and partially accurate comparing with the REFERENCED ANSWER
-                                        3: AI's ANSWER is relevant to the USER QUERY and fully accurate comparing with the REFERENCED ANSWER
-                        """)
+    - Only generate the score as -1, 0 or 1 or 2 or 3 or 4
+    - Scoring as -1: if the AI's ANSWER is much more relevant to the USER QUERY than the REFERENCED ANSWER
+    - Scoring as 0: if the AI's ANSWER is completely irrelevant to the USER QUERY
+    - If the REFERENCED ANSWER is strongly relevant to the USER QUERY:
+        - Scoring as 1: if the AI's ANSWER is relevant to the USER QUERY but doesn't contain any critical information from the REFERENCED ANSWER
+        - Scoring as 2: if the AI's ANSWER is relevant to the USER QUERY but only partially contains critical information from the REFERENCED ANSWER
+        - Scoring as 3: if the AI's ANSWER is relevant to USER QUERY and contains all the critical information from the REFERENCED ANSWER
+        - Scoring as 4: if the AI's ANSWER is relevant to USER QUERY and contains more critical information than the REFERENCED ANSWER that can help answer the USER QUERY
+    """)
     reasoning: str = Field(description="Reasoning for the given score.")
 
 
-async def evaluate_answer_accuracy_async(llm, user_query, ai_answer, referenced_answer, ac_prompt_template):
-    base_parser = PydanticOutputParser(pydantic_object=AnswerAccuracy)
+async def evaluate_answer_quality_async(llm, user_query, ai_answer, referenced_answer, aq_prompt_template):
+    base_parser = PydanticOutputParser(pydantic_object=AnswerQuality)
     output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
     prompt = PromptTemplate(
-        template=ac_prompt_template,
+        template=aq_prompt_template,
         input_variables=["user_query", "ai_answer", "referenced_answer"],
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
     )
@@ -519,23 +526,23 @@ async def evaluate_answer_accuracy_async(llm, user_query, ai_answer, referenced_
     return result
 
 
-async def process_answer_accuracy_record_async(llm, record, ac_prompt_template):
-    eval_result = await evaluate_answer_accuracy_async(
+async def process_answer_quality_record_async(llm, record, aq_prompt_template):
+    eval_result = await evaluate_answer_quality_async(
         llm,
         record['query'],
         record['ai_answer'],
         record['referenced_answer'],
-        ac_prompt_template
+        aq_prompt_template
     )
-    record['answer_accuracy_score'] = eval_result.score
-    record['ac_reasoning'] = eval_result.reasoning
+    record['answer_quality_score'] = eval_result.score
+    record['aq_reasoning'] = eval_result.reasoning
     return record
 
 
-async def get_answer_accuracy_output_async(input_df, llm, ac_prompt_template):
+async def get_answer_quality_output_async(input_df, llm, aq_prompt_template):
     input_records = input_df.to_dict(orient='records')
-    tasks = [process_answer_accuracy_record_async(llm, record, ac_prompt_template) for record in input_records]
+    tasks = [process_answer_quality_record_async(llm, record, aq_prompt_template) for record in input_records]
     output_lst = await asyncio.gather(*tasks)
     output_df = pd.DataFrame(output_lst)
     return output_df
-# ------------------------------------ ANSWER ACCURACY ------------------------------------ #
+# ------------------------------------ ANSWER QUALITY ------------------------------------ #
