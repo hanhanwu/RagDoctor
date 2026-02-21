@@ -12,4 +12,4 @@
   * This will do `npm install` automatically
 * `cd my_chatbot_frontend`
   * `npx expo install react-dom react-native-web`
-  * `npx expo start --web` will start the web 
+  * `npx expo start --web` will start the web 🚀
