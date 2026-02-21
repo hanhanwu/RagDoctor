@@ -9,3 +9,7 @@
 * In your Virtual Env,
   * Run `npm install -g expo-cli` to install the Expo CLI, a tool that helps developers create, develop, and manage React Native projects using the Expo framework.
 * Create project folder by running `npx create-expo-app my_chatbot_frontend --template blank`
+  * This will do `npm install` automatically
+* `cd my_chatbot_frontend`
+  * `npx expo install react-dom react-native-web`
+  * `npx expo start --web` will start the web 
