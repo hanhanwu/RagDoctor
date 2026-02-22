@@ -112,6 +112,23 @@ function App() {
   const [rag1AGLLM, setRag1AGLLM] = useState(answerGenLLMModels[0].value);
   const [rag2AGLLM, setRag2AGLLM] = useState(answerGenLLMModels[0].value);
 
+  const handleRunRAGs = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/run-rags", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ dataset: selectedDataset }),
+        });
+        const data = await response.json();
+        console.log("Response:", data);
+      } catch (error) {
+        console.error("Error running RAGs:", error);
+      }
+  };
+  
+
   return (
     <div style={{
       display: "flex",
@@ -232,6 +249,25 @@ function App() {
             ? `Selected Dataset: ${selectedDataset}`
             : "Please config the settings of each RAG"}
         </div>
+          {datasetClicked && selectedDataset && (
+            <button
+              onClick={handleRunRAGs}
+              style={{
+                width: "80%",
+                background: "#000",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "12px 24px",
+                fontSize: "1rem",
+                fontWeight: "bold",
+                cursor: "pointer",
+                marginTop: "24px"
+              }}
+            >
+              Confirmed all the selections, run RAGs now!
+            </button>
+          )}
       </div>
       <RAGSettings
         title="RAG2 Settings"

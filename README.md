@@ -12,4 +12,10 @@
   * This will do `npm install` automatically
 * `cd my_chatbot_frontend`
   * `npx expo install react-dom react-native-web`
+
+## Test Local Website
+* `cd chatbot_backend`
+  * `python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000` to start FastAPI server
+  * Backend console will show printed results
+* `cd my_chatbot_frontend`
   * `npx expo start --web` will start the web 🚀
