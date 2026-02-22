@@ -2,10 +2,16 @@ import React, { useState } from "react";
 
 const embeddingModels = [
   { label: "BAAI/bge-small-en-v1.5", value: "BAAI/bge-small-en-v1.5" },
-  // Add more models here if needed
+];
+const answerGenLLMModels = [
+  { label: "llama-3.1-8b-instant", value: "llama-3.1-8b-instant" },
+  { label: "openai/gpt-oss-120b", value: "openai/gpt-oss-120b" },
 ];
 
-function RAGSettings({ title, selectedModel, onModelChange }) {
+function RAGSettings({ title, selectedModel, onModelChange, 
+  topN, onTopNChange, semanticWeight, onSemanticWeightChange,
+  agLLM, onAGLLMChange,
+ }) {
   return (
     <div style={{
       flex: 1,
@@ -37,7 +43,59 @@ function RAGSettings({ title, selectedModel, onModelChange }) {
           ))}
         </select>
       </div>
-      {/* Add more settings here if needed */}
+
+      <div style={{ marginBottom: "16px" }}>
+          <label style={{ fontWeight: "bold" }}>Top N Retrieved Content:</label>
+          <br />
+          <select value={topN} onChange={e => onTopNChange(Number(e.target.value))} style={{ marginTop: "8px", padding: "6px", width: "100%" }}>
+              {[1,2,3,4,5].map(n => <option key={n} value={n}>Top {n}</option>)}
+          </select>
+      </div>
+      
+      <div style={{ marginBottom: "16px" }}>
+                <label style={{ fontWeight: "bold" }}>Semantic Retrieval Weight (0 ~ 1):</label>
+                <br />
+                <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={semanticWeight}
+                    onChange={e => {
+                        let v = Number(e.target.value);
+                        if (Number.isNaN(v)) v = 0;
+                        if (v < 0) v = 0;
+                        if (v > 1) v = 1;
+                        onSemanticWeightChange(v);
+                    }}
+                    style={{ marginTop: "8px", padding: "6px", width: "100%" }}
+                />
+      </div>
+
+      <div style={{ marginBottom: "8px", color: "#333" }}>
+          <strong>Key Word Retrieval Weight:</strong>
+          <div style={{ marginTop: "6px" }}>{(1 - (Number(semanticWeight) || 0)).toFixed(2)}</div>
+      </div>
+
+      <div style={{ marginBottom: "16px" }}>
+        <label htmlFor={`${title}-answer-gen-llm`} style={{ fontWeight: "bold" }}>
+          Answer Generation LLM:
+        </label>
+        <br />
+        <select
+          id={`${title}-answer-gen-llm`}
+          value={agLLM}
+          onChange={e => onAGLLMChange(e.target.value)}
+          style={{ marginTop: "8px", padding: "6px", width: "100%" }}
+        >
+          {answerGenLLMModels.map(model => (
+            <option key={model.value} value={model.value}>
+              {model.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
     </div>
   );
 }
@@ -47,6 +105,12 @@ function App() {
   const [rag2Model, setRag2Model] = useState(embeddingModels[0].value);
   const [selectedDataset, setSelectedDataset] = useState("");
   const [datasetClicked, setDatasetClicked] = useState(false);
+  const [rag1TopN, setRag1TopN] = useState(1);
+  const [rag2TopN, setRag2TopN] = useState(1);
+  const [rag1SemanticWeight, setRag1SemanticWeight] = useState(0.5);
+  const [rag2SemanticWeight, setRag2SemanticWeight] = useState(0.5);
+  const [rag1AGLLM, setRag1AGLLM] = useState(answerGenLLMModels[0].value);
+  const [rag2AGLLM, setRag2AGLLM] = useState(answerGenLLMModels[0].value);
 
   return (
     <div style={{
@@ -63,6 +127,12 @@ function App() {
         title="RAG1 Settings"
         selectedModel={rag1Model}
         onModelChange={setRag1Model}
+        topN={rag1TopN}
+        onTopNChange={setRag1TopN}
+        semanticWeight={rag1SemanticWeight}
+        onSemanticWeightChange={setRag1SemanticWeight}
+        agLLM={rag1AGLLM}
+        onAGLLMChange={setRag1AGLLM}
         style={{ flex: 1 }}
       />
       <div
@@ -108,7 +178,9 @@ function App() {
               }}>
                 <button
                   style={{
-                    background: datasetClicked ? "#F0620A" : "#4caf50",
+                    background: datasetClicked
+                      ? (selectedDataset === "FIQA Data" ? "#F0620A" : "#549d07")
+                      : "#549d07",
                     color: "#fff",
                     border: "none",
                     borderRadius: "6px",
@@ -119,10 +191,14 @@ function App() {
                     transition: "background 0.2s"
                   }}
                   onClick={() => {
-                    setSelectedDataset("FIQA Data");
-                    setDatasetClicked(true);
+                    if (datasetClicked && selectedDataset === "FIQA Data") {
+                      setSelectedDataset("");
+                      setDatasetClicked(false);
+                    } else {
+                      setSelectedDataset("FIQA Data");
+                      setDatasetClicked(true);
+                    }
                   }}
-                  disabled={datasetClicked}
                 >
                   FIQA Data
                 </button>
@@ -152,7 +228,7 @@ function App() {
             color: "#555"
           }}
         >
-          {datasetClicked
+          {datasetClicked && selectedDataset
             ? `Selected Dataset: ${selectedDataset}`
             : "Please config the settings of each RAG"}
         </div>
@@ -161,6 +237,12 @@ function App() {
         title="RAG2 Settings"
         selectedModel={rag2Model}
         onModelChange={setRag2Model}
+        topN={rag2TopN}
+        onTopNChange={setRag2TopN}
+        semanticWeight={rag2SemanticWeight}
+        onSemanticWeightChange={setRag2SemanticWeight}
+        agLLM={rag2AGLLM}
+        onAGLLMChange={setRag2AGLLM}
         style={{ flex: 1 }}
       />
     </div>
