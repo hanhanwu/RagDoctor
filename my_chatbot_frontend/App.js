@@ -45,6 +45,8 @@ function RAGSettings({ title, selectedModel, onModelChange }) {
 function App() {
   const [rag1Model, setRag1Model] = useState(embeddingModels[0].value);
   const [rag2Model, setRag2Model] = useState(embeddingModels[0].value);
+  const [selectedDataset, setSelectedDataset] = useState("");
+  const [datasetClicked, setDatasetClicked] = useState(false);
 
   return (
     <div style={{
@@ -99,20 +101,41 @@ function App() {
           <tbody>
             <tr>
               <td style={{
-                textAlign: "left",
+                textAlign: "center",
                 padding: "12px",
                 border: "1px solid #888",
                 background: "#fff"
-              }}>FIQA Data</td>
+              }}>
+                <button
+                  style={{
+                    background: datasetClicked ? "#F0620A" : "#4caf50",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "10px 24px",
+                    fontSize: "1rem",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    transition: "background 0.2s"
+                  }}
+                  onClick={() => {
+                    setSelectedDataset("FIQA Data");
+                    setDatasetClicked(true);
+                  }}
+                  disabled={datasetClicked}
+                >
+                  FIQA Data
+                </button>
+              </td>
               <td style={{
                 textAlign: "left",
                 padding: "12px",
                 border: "1px solid #888",
                 background: "#fff"
               }}>
-                30 records of finance Q&amp;A. See details in&nbsp;
+                30 records of finance Q&amp;A.<br /> See details{" "}
                 <a href="https://huggingface.co/datasets/vibrantlabsai/fiqa" target="_blank" rel="noopener noreferrer">
-                  https://huggingface.co/datasets/vibrantlabsai/fiqa
+                  here &gt;&gt;
                 </a>
               </td>
             </tr>
@@ -129,7 +152,9 @@ function App() {
             color: "#555"
           }}
         >
-          Please config the settings of each RAG
+          {datasetClicked
+            ? `Selected Dataset: ${selectedDataset}`
+            : "Please config the settings of each RAG"}
         </div>
       </div>
       <RAGSettings
