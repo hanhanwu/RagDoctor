@@ -224,6 +224,7 @@ class CrossEncoderRerank(BaseNodePostprocessor):
         reranked = sorted(zip(nodes, scores), key=lambda x: x[1], reverse=True)
         return [NodeWithScore(node=n.node, score=float(s)) for n, s in reranked[:self.top_n]]
     
+    
 # ============================================================================
 # 4. QUERY EXPANSION
 # ============================================================================
