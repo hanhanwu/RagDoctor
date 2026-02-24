@@ -39,6 +39,7 @@ DATABASE_URL = DATABASE_URL.replace(
 )
 engine = create_async_engine(DATABASE_URL)
 
+
 @app.get("/debug/embeddings")
 async def check_embeddings():
     async with engine.begin() as conn:
@@ -47,4 +48,14 @@ async def check_embeddings():
         )
         rows = result.fetchall()
 
-    return {"rows": [dict(row._mapping) for row in rows]}
+    safe_rows = []
+    for row in rows:
+        data = dict(row._mapping)
+
+        # Convert embedding vector to string
+        if "embedding" in data:
+            data["embedding"] = str(data["embedding"])[:200]
+
+        safe_rows.append(data)
+
+    return {"rows": safe_rows}
