@@ -40,22 +40,16 @@ DATABASE_URL = DATABASE_URL.replace(
 engine = create_async_engine(DATABASE_URL)
 
 
-@app.get("/debug/embeddings")
-async def check_embeddings():
+@app.get("/debug/tables")
+async def debug_tables():
     async with engine.begin() as conn:
         result = await conn.execute(
-            text("SELECT * FROM rag_dr_embeddings LIMIT 5")
+            text("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public';
+            """)
         )
         rows = result.fetchall()
 
-    safe_rows = []
-    for row in rows:
-        data = dict(row._mapping)
-
-        # Convert embedding vector to string
-        if "embedding" in data:
-            data["embedding"] = str(data["embedding"])[:200]
-
-        safe_rows.append(data)
-
-    return {"rows": safe_rows}
+    return {"tables": [row._mapping["table_name"] for row in rows]}
