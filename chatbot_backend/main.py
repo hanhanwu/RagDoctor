@@ -53,3 +53,12 @@ async def debug_tables():
         rows = result.fetchall()
 
     return {"tables": [row._mapping["table_name"] for row in rows]}
+
+
+@app.get("/debug/current-db")
+async def current_db():
+    async with engine.begin() as conn:
+        result = await conn.execute(text("SELECT current_database();"))
+        db_name = result.scalar()
+
+    return {"connected_database": db_name}
