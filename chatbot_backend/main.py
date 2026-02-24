@@ -25,7 +25,7 @@ async def run_rags(request: DatasetRequest):
     return {"status": "success", "dataset": request.dataset}
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
 engine = create_async_engine(
     DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 )
