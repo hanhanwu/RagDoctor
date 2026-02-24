@@ -1,2 +1,10 @@
 fastapi
 uvicorn[standard]
+python-multipart
+python-dotenv
+sqlalchemy
+psycopg2-binary
+PyYAML
+sqlmodel
+requests
+httpx
