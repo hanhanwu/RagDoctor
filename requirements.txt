@@ -3,6 +3,7 @@ uvicorn[standard]
 python-multipart
 python-dotenv
 sqlalchemy
+asyncpg
 psycopg2-binary
 PyYAML
 sqlmodel
