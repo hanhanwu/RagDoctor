@@ -25,40 +25,40 @@ async def run_rags(request: DatasetRequest):
     return {"status": "success", "dataset": request.dataset}
 
 
-DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace(
-        "postgres://",
-        "postgresql://",
-        1
-    )
-DATABASE_URL = DATABASE_URL.replace(
-    "postgresql://",
-    "postgresql+asyncpg://",
-    1
-)
-engine = create_async_engine(DATABASE_URL)
+# DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
+# if DATABASE_URL.startswith("postgres://"):
+#     DATABASE_URL = DATABASE_URL.replace(
+#         "postgres://",
+#         "postgresql://",
+#         1
+#     )
+# DATABASE_URL = DATABASE_URL.replace(
+#     "postgresql://",
+#     "postgresql+asyncpg://",
+#     1
+# )
+# engine = create_async_engine(DATABASE_URL)
 
 
-@app.get("/debug/tables")
-async def debug_tables():
-    async with engine.begin() as conn:
-        result = await conn.execute(
-            text("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public';
-            """)
-        )
-        rows = result.fetchall()
+# @app.get("/debug/tables")
+# async def debug_tables():
+#     async with engine.begin() as conn:
+#         result = await conn.execute(
+#             text("""
+#                 SELECT table_name
+#                 FROM information_schema.tables
+#                 WHERE table_schema = 'public';
+#             """)
+#         )
+#         rows = result.fetchall()
 
-    return {"tables": [row._mapping["table_name"] for row in rows]}
+#     return {"tables": [row._mapping["table_name"] for row in rows]}
 
 
-@app.get("/debug/current-db")
-async def current_db():
-    async with engine.begin() as conn:
-        result = await conn.execute(text("SELECT current_database();"))
-        db_name = result.scalar()
+# @app.get("/debug/current-db")
+# async def current_db():
+#     async with engine.begin() as conn:
+#         result = await conn.execute(text("SELECT current_database();"))
+#         db_name = result.scalar()
 
-    return {"connected_database": db_name}
+#     return {"connected_database": db_name}
