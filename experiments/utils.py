@@ -330,7 +330,6 @@ async def run_eval_async(items, query_engine, concurrency=3):
 import os
 import json
 import yaml
-import time
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from llama_index.core import Settings
