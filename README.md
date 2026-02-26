@@ -19,3 +19,8 @@
   * Backend console will show printed results
 * `cd my_chatbot_frontend`
   * `npx expo start --web` will start the web 🚀
+
+## Test Railway Backend
+* Deploy your new backend changes to Railway, once the service became live
+* Open `https://hanhanchatbot-production.up.railway.app/{FastAPI function prefix}` to see results
+  * For example: `https://hanhanchatbot-production.up.railway.app/debug/tables`
