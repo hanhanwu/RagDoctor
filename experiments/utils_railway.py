@@ -160,8 +160,8 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
             )
     llm = Groq(model=llm_str, temperature=0)
     table_name=f"data_embeddings_{embedding_model_settings['name']\
-                               .split('/')[-1].replace('-', '_').replace('.', 'dot')}",
-    embed_dim=embedding_model_settings['settings']['embedding_dim'],
+                               .split('/')[-1].replace('-', '_').replace('.', 'dot')}"
+    embed_dim=embedding_model_settings['settings']['embedding_dim']
 
     vector_store = PGVectorStore.from_params(
         database=db_name,
@@ -219,3 +219,133 @@ async def run_all_in_processes(cfgs, selected_items, documents, url, max_workers
             for cfg_path in cfgs
         ]
         await asyncio.gather(*tasks)
+
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+from pydantic import BaseModel, Field
+import pandas as pd
+from langchain.prompts import PromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from langchain.output_parsers import OutputFixingParser
+
+
+def get_eval_input(json_results):
+    records = []
+    for item in json_results:
+        record = {
+            'query': item['question'],
+            'ai_answer': item['ai_answer'],
+            'referenced_answer': item['expected_answer'],
+            'retrieved_content': ''.join(content_dct['content'] for content_dct in item['retrieved_lst']),
+        }
+        records.append(record)
+    return pd.DataFrame(records)
+
+
+# ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
+class RetrievalQuality(BaseModel):
+    score: int = Field(description="""Score with:
+                - Only generate the score as -1, 0 or 1 or 2 or 3
+                - Scoring as -1: if the RETRIEVED CONTENT is much more relevant to the USER QUERY than the CONTEXT
+                - Scoring as 0: if the RETRIEVED CONTENT is completely irrelevant to the USER QUERY
+                - If the CONTEXT is strongly relevant to the USER QUERY:
+                    - Scoring as 1: if the RETRIEVED CONTENT is relevant to the USER QUERY but doesn't contain any critical information from the CONTEXT
+                    - Scoring as 2: if the RETRIEVED CONTENT is relevant to the USER QUERY but only partially contains critical information from the CONTEXT
+                    - Scoring as 3: if the RETRIEVED CONTENT is relevant to USER QUERY and contains all the critical information from the CONTEXT
+            """)
+    reasoning: str = Field(description="Reasoning for the given score.")
+
+
+async def evaluate_retrieval_quality_async(llm, user_query, context, retrieved_content, rq_prompt_template):
+    base_parser = PydanticOutputParser(pydantic_object=RetrievalQuality)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=rq_prompt_template,
+        input_variables=["user_query", "context", "retrieved_content"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await chain.ainvoke({
+        "user_query": user_query,
+        "context": context,
+        "retrieved_content": retrieved_content
+    })
+    return result
+
+
+async def process_retrieval_quality_record_async(llm, record, rq_prompt_template):
+    eval_result = await evaluate_retrieval_quality_async(
+        llm,
+        record['query'],
+        record['context'],
+        record['retrieved_content'],
+        rq_prompt_template
+    )
+    record['retrieval_quality_score'] = eval_result.score
+    record['rq_reasoning'] = eval_result.reasoning
+    return record
+
+
+async def get_retrieval_quality_output_async(input_df, llm, rq_prompt_template):
+    input_records = input_df.to_dict(orient='records')
+    tasks = [process_retrieval_quality_record_async(llm, record, rq_prompt_template) for record in input_records]
+    output_lst = await asyncio.gather(*tasks)
+    output_df = pd.DataFrame(output_lst)
+    return output_df
+# ------------------------------------ QUERY QUALITY ------------------------------------ #
+
+
+# ------------------------------------ ANSWER QUALITY ------------------------------------ #
+class AnswerQuality(BaseModel):
+    score: int = Field(description="""Score with:
+    - Only generate the score as -1, 0 or 1 or 2 or 3 or 4
+    - Scoring as -1: if the AI's ANSWER is much more relevant to the USER QUERY than the REFERENCED ANSWER
+    - Scoring as 0: if the AI's ANSWER is completely irrelevant to the USER QUERY
+    - If the REFERENCED ANSWER is strongly relevant to the USER QUERY:
+        - Scoring as 1: if the AI's ANSWER is relevant to the USER QUERY but doesn't contain any critical information from the REFERENCED ANSWER
+        - Scoring as 2: if the AI's ANSWER is relevant to the USER QUERY but only partially contains critical information from the REFERENCED ANSWER
+        - Scoring as 3: if the AI's ANSWER is relevant to USER QUERY and contains all the critical information from the REFERENCED ANSWER
+        - Scoring as 4: if the AI's ANSWER is relevant to USER QUERY and contains more critical information than the REFERENCED ANSWER that can help answer the USER QUERY
+    """)
+    reasoning: str = Field(description="Reasoning for the given score.")
+
+
+async def evaluate_answer_quality_async(llm, user_query, ai_answer, referenced_answer, aq_prompt_template):
+    base_parser = PydanticOutputParser(pydantic_object=AnswerQuality)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=aq_prompt_template,
+        input_variables=["user_query", "ai_answer", "referenced_answer"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await chain.ainvoke({
+        "user_query": user_query,
+        "ai_answer": ai_answer,
+        "referenced_answer": referenced_answer
+    })
+    return result
+
+
+async def process_answer_quality_record_async(llm, record, aq_prompt_template):
+    eval_result = await evaluate_answer_quality_async(
+        llm,
+        record['query'],
+        record['ai_answer'],
+        record['referenced_answer'],
+        aq_prompt_template
+    )
+    record['answer_quality_score'] = eval_result.score
+    record['aq_reasoning'] = eval_result.reasoning
+    return record
+
+
+async def get_answer_quality_output_async(input_df, llm, aq_prompt_template):
+    input_records = input_df.to_dict(orient='records')
+    tasks = [process_answer_quality_record_async(llm, record, aq_prompt_template) for record in input_records]
+    output_lst = await asyncio.gather(*tasks)
+    output_df = pd.DataFrame(output_lst)
+    return output_df
+# ------------------------------------ ANSWER QUALITY ------------------------------------ #
