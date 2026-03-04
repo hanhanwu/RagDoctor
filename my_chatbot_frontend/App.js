@@ -111,10 +111,14 @@ function App() {
   const [rag2SemanticWeight, setRag2SemanticWeight] = useState(0.5);
   const [rag1AGLLM, setRag1AGLLM] = useState(answerGenLLMModels[0].value);
   const [rag2AGLLM, setRag2AGLLM] = useState(answerGenLLMModels[0].value);
+  const [preprocessingStatus, setPreprocessingStatus] = useState("idle");  // "idle" | "running" | "done" | "error"
+  const [preprocessingMessage, setPreprocessingMessage] = useState("");
+
+  const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
 
   const handleRunRAGs = async () => {
       try {
-        const response = await fetch("http://localhost:8000/run-rags", {
+        const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -127,8 +131,29 @@ function App() {
         console.error("Error running RAGs:", error);
       }
   };
-  
 
+  const handleFIQASelect = async () => {
+    setSelectedDataset("FIQA Data");
+    setDatasetClicked(true);
+    setPreprocessingStatus("running");
+    setPreprocessingMessage("preprocessing the data ...");
+    try {
+      await fetch(`https://${BACKEND_URL}/load-fiqa`, { method: "POST" });
+      const poll = setInterval(async () => {
+        const res = await fetch(`https://${BACKEND_URL}/preprocessing-status`);
+        const data = await res.json();
+        setPreprocessingMessage(data.message);
+        if (data.status === "done" || data.status === "error") {
+          setPreprocessingStatus(data.status);
+          clearInterval(poll);
+        }
+      }, 2000);
+    } catch (err) {
+      setPreprocessingStatus("error");
+      setPreprocessingMessage("Error starting preprocessing.");
+    }
+  };
+  
   return (
     <div style={{
       display: "flex",
@@ -218,14 +243,30 @@ function App() {
                     if (datasetClicked && selectedDataset === "FIQA Data") {
                       setSelectedDataset("");
                       setDatasetClicked(false);
+                      setPreprocessingStatus("idle");
+                      setPreprocessingMessage("");
                     } else {
-                      setSelectedDataset("FIQA Data");
-                      setDatasetClicked(true);
+                      handleFIQASelect();
                     }
                   }}
                 >
                   FIQA Data
                 </button>
+                {selectedDataset === "FIQA Data" && preprocessingStatus !== "idle" && (
+                   <div style={{ marginTop: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "0.85rem", color: "#333" }}>
+                     {preprocessingStatus === "running" && (
+                       <div style={{
+                         width: "14px", height: "14px",
+                         border: "2px solid #ccc",
+                         borderTop: "2px solid #F0620A",
+                         borderRadius: "50%",
+                         animation: "spin 0.8s linear infinite",
+                         flexShrink: 0
+                       }} />
+                     )}
+                     <span>{preprocessingMessage}</span>
+                   </div>
+                 )}
               </td>
               <td style={{
                 textAlign: "left",

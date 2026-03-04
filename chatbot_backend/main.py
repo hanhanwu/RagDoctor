@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+import traceback
+import os
+import pandas as pd
+from datasets import load_dataset
+from llama_index.core import Document
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
-import os
+
 
 app = FastAPI()
 
@@ -24,21 +28,63 @@ async def run_rags(request: DatasetRequest):
     print(f"Selected Dataset: {request.dataset}")
     return {"status": "success", "dataset": request.dataset}
 
+preprocessing_status = {"status": "idle", "message": ""}
+rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
 
 DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
 DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://")
 engine = create_async_engine(DATABASE_URL)
 
-@app.get("/debug/tables")
-async def debug_tables():
-    async with engine.begin() as conn:
-        result = await conn.execute(
-            text("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public';
-            """)
-        )
-        rows = result.fetchall()
+def run_fiqa_preprocessing():
+    global preprocessing_status, rag_data
+    try:
+        preprocessing_status = {"status": "running", "message": "preprocessing the data ..."}
+        fiqa_eval = load_dataset("explodinggradients/fiqa", "ragas_eval")['baseline']
+        
+        output_dir = "fiqa_raw_text"
+        os.makedirs(output_dir, exist_ok=True)
 
-    return {"tables": [row._mapping["table_name"] for row in rows]}
+        rag_lst = []
+        documents = []
+        for idx, record in enumerate(fiqa_eval):
+            context = ''.join(record['contexts'])
+            gt = ''.join(record['ground_truths'])
+            if 'answer' in record.keys():
+                ai0_answer = record['answer'].strip()
+            else:
+                ai0_answer = None
+
+            rag_lst.append({
+                 'question': record['question'],
+                 'context': context,
+                 'context_ct': len(record['contexts']),
+                 'ground_truth': gt,
+                 'ai0_answer': ai0_answer
+             })
+            doc = Document(
+                 text=context,
+                 metadata={"doc_name": idx}
+             )
+            documents.append(doc)
+ 
+        rag_df = pd.DataFrame(rag_lst)
+        rag_data["rag_lst"] = rag_lst
+        rag_data["documents"] = documents
+        rag_data["rag_df"] = rag_df
+        preprocessing_status = {"status": "done", "message": "finished data preprocessing ✅"}
+    except Exception as e:
+        traceback.print_exc()  # prints full error in backend terminal
+        preprocessing_status = {"status": "error", "message": f"Error: {str(e)}"}
+
+
+@app.post("/load-fiqa")
+async def load_fiqa(background_tasks: BackgroundTasks):
+    preprocessing_status["status"] = "running"
+    preprocessing_status["message"] = "preprocessing the data ..."
+    background_tasks.add_task(run_fiqa_preprocessing)
+    return {"message": "FIQA preprocessing started"}
+
+
+@app.get("/preprocessing-status")
+async def get_preprocessing_status():
+    return preprocessing_status
