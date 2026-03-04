@@ -4,6 +4,7 @@ experiments/*raw_text/*
 experiments/storage/*
 experiments/storage*/*
 experiments/output/*
+chatbot_backend/fiqa_raw_text/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
