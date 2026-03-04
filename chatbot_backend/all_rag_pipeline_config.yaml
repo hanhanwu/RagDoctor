@@ -14,7 +14,6 @@ retriever_settings:
     retriever_params:
       top_k: 1
       alpha: 0.9
-indexing_storage_dirs: ['./storage_r1', './storage_r2']
 output_files: ['./output/r1.json', './output/r2.json']
 eval_rq_output: ['./output/eval_results/r1_rq.xlsx', './output/eval_results/r2_rq.xlsx']
 eval_aq_output: ['./output/eval_results/r1_aq.xlsx', './output/eval_results/r2_aq.xlsx']
