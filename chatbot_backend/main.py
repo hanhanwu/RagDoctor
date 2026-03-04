@@ -38,7 +38,7 @@ engine = create_async_engine(DATABASE_URL)
 def run_fiqa_preprocessing():
     global preprocessing_status, rag_data
     try:
-        preprocessing_status = {"status": "running", "message": "preprocessing the data ..."}
+        preprocessing_status = {"status": "running", "message": "Preprocessing the data ..."}
         fiqa_eval = load_dataset("explodinggradients/fiqa", "ragas_eval")['baseline']
         
         output_dir = "fiqa_raw_text"
@@ -71,7 +71,7 @@ def run_fiqa_preprocessing():
         rag_data["rag_lst"] = rag_lst
         rag_data["documents"] = documents
         rag_data["rag_df"] = rag_df
-        preprocessing_status = {"status": "done", "message": "finished data preprocessing ✅"}
+        preprocessing_status = {"status": "done", "message": "Finished data preprocessing ✅"}
     except Exception as e:
         traceback.print_exc()  # prints full error in backend terminal
         preprocessing_status = {"status": "error", "message": f"Error: {str(e)}"}
@@ -80,7 +80,7 @@ def run_fiqa_preprocessing():
 @app.post("/load-fiqa")
 async def load_fiqa(background_tasks: BackgroundTasks):
     preprocessing_status["status"] = "running"
-    preprocessing_status["message"] = "preprocessing the data ..."
+    preprocessing_status["message"] = "Preprocessing the data ..."
     background_tasks.add_task(run_fiqa_preprocessing)
     return {"message": "FIQA preprocessing started"}
 

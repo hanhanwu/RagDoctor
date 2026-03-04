@@ -192,7 +192,7 @@ function App() {
         <div style={{ textAlign: "center", marginBottom: "16px" }}>
           <h1 style={{ margin: 0, fontSize: "3.6rem", fontWeight: 800, color: "#800000" }}>RAG Doctor</h1>
           <div style={{ marginTop: "10px", color: "#a52a2a", fontFamily: "monospace" }}>
-            ~~~~~~~~~~~~~~~~~~~~~~ Made by super Hanhan! ~~~~~~~~~~~~~~~~~~~~~~
+            ----------------------- Made by super Hanhan! -----------------------
           </div>
         </div>
           <table style={{ width: "80%", borderCollapse: "collapse", marginBottom: "64px", border: "2px solid #888" }}></table>
