@@ -1,7 +1,6 @@
 import traceback
 import os
 import pandas as pd
-from datasets import load_dataset
 from llama_index.core import Document
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
