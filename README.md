@@ -20,6 +20,18 @@
 * `cd my_chatbot_frontend`
   * `npx expo start --web` will start the web 🚀
 
+## Railway Setup
+* Make sure there's requirements.txt in your repo
+  * In this case I have large packages like LlamIndex, using docker to build will be much faster than railway's default Railpack.
+* Create `start.sh`, no need to add this to Railway's start command as Docker build will be automatically detected
+* Create `Dockerfile` and `.dockerignore` files
+* Push code changes and do railway deploy
+* After a successful deployment, click the `Service` --> Click `Settings`
+  * Under `Networking` --> Click `Generate Domain` --> port number can be 8080 --> Get `Railway URL`
+  * You can test https://{Railway URL}/docs from browser, if it shows FastAPI page, then you're good
+  * If you have multiple Railway projects, their domain can all be 8080, as long as they're separated deployments, cuz in Railway each project has its own container
+  * Copy the generated domain to App.js as the value of `BACKEND_URL`, make sure you have `https://` before the URL!
+
 ## Test Railway Backend
 * Deploy your new backend changes to Railway, once the service became live
 * Open `https://hanhanchatbot-production.up.railway.app/{FastAPI function prefix}` to see results

@@ -3,6 +3,7 @@ FROM python:3.13-slim
 # Improve Python runtime behavior
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV UV_COMPILE_BYTECODE=1
 
 WORKDIR /app
 
@@ -15,8 +16,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install dependencies
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install uv \
+    && uv pip install --system -r requirements.txt
 
 # Copy application code
 COPY . .
