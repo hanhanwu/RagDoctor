@@ -138,7 +138,11 @@ function App() {
     setPreprocessingStatus("running");
     setPreprocessingMessage("preprocessing the data ...");
     try {
-      await fetch(`https://${BACKEND_URL}/load-fiqa`, { method: "POST" });
+      await fetch(`https://${BACKEND_URL}/load-fiqa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataset_name: "FIQA Data" }),
+      });
       const poll = setInterval(async () => {
         const res = await fetch(`https://${BACKEND_URL}/preprocessing-status`);
         const data = await res.json();
