@@ -72,6 +72,8 @@ def run_fiqa_preprocessing():
         rag_data["documents"] = documents
         rag_data["rag_df"] = rag_df
         preprocessing_status = {"status": "done", "message": "Finished data preprocessing ✅"}
+        print(len(rag_lst), len(documents), rag_df.shape)
+        print(rag_df.head())
     except Exception as e:
         traceback.print_exc()  # prints full error in backend terminal
         preprocessing_status = {"status": "error", "message": f"Error: {str(e)}"}
