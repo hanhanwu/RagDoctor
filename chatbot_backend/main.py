@@ -58,6 +58,7 @@ def run_fiqa_preprocessing(dataset_name: str):
         rag_lst = []
         documents = []
         for idx, record in enumerate(fiqa_eval):
+            record = record[0] 
             context = ''.join(record['contexts'])
             gt = ''.join(record['ground_truths'])
             if 'answer' in record.keys():
