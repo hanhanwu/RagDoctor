@@ -32,6 +32,10 @@
   * If you have multiple Railway projects, their domain can all be 8080, as long as they're separated deployments, cuz in Railway each project has its own container
   * Copy the generated domain to App.js as the value of `BACKEND_URL`, make sure you have `https://` before the URL!
 
+### Build Speed Up Notes 🚀
+* If there's large packages to install, using docker is faster than Railway's default Railpack, cuz Dockerfile steps create layers and only layers that changed are rebuilt. So if requirements.txt stay the same, it's reusable with Docker build. Railpack treats every deployment as a fresh environment.
+* `uv` install is faster than `pip` install as it uses Uses a precompiled wheel cache and optimized resolver, also skips unnecessary dependency checks.
+
 ## Test Railway Backend
 * Deploy your new backend changes to Railway, once the service became live
 * Open `https://hanhanchatbot-production.up.railway.app/{FastAPI function prefix}` to see results
