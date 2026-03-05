@@ -1,14 +1,11 @@
 import traceback
 import os
-import json
-import asyncio
 import psycopg2
 import pandas as pd
 from llama_index.core import Document
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import create_async_engine
 
 
 app = FastAPI()
@@ -34,7 +31,7 @@ preprocessing_status = {"status": "idle", "message": ""}
 rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
 
 DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
-DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://")
+DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
 
 
 def fetch_raw_data(dataset_name: str):
