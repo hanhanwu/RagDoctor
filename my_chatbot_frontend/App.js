@@ -123,7 +123,23 @@ function App() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ dataset: selectedDataset }),
+          body: JSON.stringify({
+           dataset: selectedDataset,
+           rag1: {
+             embedding_model: rag1Model,
+             top_n: rag1TopN,
+             semantic_weight: rag1SemanticWeight,
+             keyword_weight: parseFloat((1 - rag1SemanticWeight).toFixed(2)),
+             answer_gen_llm: rag1AGLLM,
+           },
+           rag2: {
+             embedding_model: rag2Model,
+             top_n: rag2TopN,
+             semantic_weight: rag2SemanticWeight,
+             keyword_weight: parseFloat((1 - rag2SemanticWeight).toFixed(2)),
+             answer_gen_llm: rag2AGLLM,
+           },
+         }),
         });
         const data = await response.json();
         console.log("Response:", data);

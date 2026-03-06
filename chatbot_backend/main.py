@@ -19,12 +19,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class RAGConfig(BaseModel):
+    embedding_model: str
+    top_n: int
+    semantic_weight: float
+    keyword_weight: float
+    answer_gen_llm: str
+
+class PreprocessRequest(BaseModel):
+    dataset_name: str
+
 class DatasetRequest(BaseModel):
     dataset: str
+    rag1: RAGConfig
+    rag2: RAGConfig
+
 
 @app.post("/run-rags")
 async def run_rags(request: DatasetRequest):
     print(f"Selected Dataset: {request.dataset}")
+    print(f"RAG1 Settings: {request.rag1}")
+    print(f"RAG2 Settings: {request.rag2}")
     return {"status": "success", "dataset": request.dataset}
 
 preprocessing_status = {"status": "idle", "message": ""}
@@ -89,10 +104,6 @@ def run_fiqa_preprocessing(dataset_name: str):
     except Exception as e:
         traceback.print_exc()  # prints full error in backend terminal
         preprocessing_status = {"status": "error", "message": f"Error: {str(e)}"}
-
-
-class PreprocessRequest(BaseModel):
-    dataset_name: str
 
 
 @app.post("/load-fiqa")
