@@ -7,6 +7,8 @@ from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from utils import run_all_in_processes
+
 
 app = FastAPI()
 
@@ -33,14 +35,6 @@ class DatasetRequest(BaseModel):
     dataset: str
     rag1: RAGConfig
     rag2: RAGConfig
-
-
-@app.post("/run-rags")
-async def run_rags(request: DatasetRequest):
-    print(f"Selected Dataset: {request.dataset}")
-    print(f"RAG1 Settings: {request.rag1}")
-    print(f"RAG2 Settings: {request.rag2}")
-    return {"status": "success", "dataset": request.dataset}
 
 preprocessing_status = {"status": "idle", "message": ""}
 rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
@@ -117,3 +111,15 @@ async def load_fiqa(request: PreprocessRequest, background_tasks: BackgroundTask
 @app.get("/preprocessing-status")
 async def get_preprocessing_status():
     return preprocessing_status
+
+
+@app.post("/run-rags")
+async def run_rags(request: DatasetRequest):
+    print(f"Selected Dataset: {request.dataset}")
+    print(f"RAG1 Settings: {request.rag1}")
+    print(f"RAG2 Settings: {request.rag2}")
+
+    cfgs = [request.rag1, request.rag2]
+    await run_all_in_processes(cfgs, rag_data['rag_lst'],
+                                rag_data['documents'], DATABASE_URL)
+    return {"status": "success", "dataset": request.dataset}

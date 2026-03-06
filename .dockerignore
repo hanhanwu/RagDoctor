@@ -9,3 +9,5 @@ venv
 .cache
 datasets
 experiments
+chatbot_backend/all_rag_pipeline_config.yaml
+chatbot_backend/DB_processing.ipynb
