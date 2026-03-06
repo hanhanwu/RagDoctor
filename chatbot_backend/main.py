@@ -7,7 +7,7 @@ from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from utils import run_all_in_processes
+from .utils import run_all_in_processes
 
 
 app = FastAPI()
