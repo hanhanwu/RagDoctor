@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import make_url
 
-from .utils import run_all_in_processes
+from .utils import run_all_in_processes, run_auto_eval
 
 
 app = FastAPI()
@@ -126,5 +126,10 @@ async def run_rags(request: DatasetRequest):
                                 rag_data['documents'], db_url, 
                                 request.dataset)
     print("RAG Config Hashes:", config_hashes)
+
+    auto_eval_output = await run_auto_eval(config_hashes, db_url, rag_data['rag_lst'])
+    for config_hash, eval_result in auto_eval_output.items():
+        print(f"Auto-evaluation result for config {config_hash}: {len(eval_result)}")
+        print(eval_result.head(n=2))
 
     return {"status": "success"}

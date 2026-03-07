@@ -346,7 +346,7 @@ function App() {
                  Confirmed all the selections, run RAGs now!
                </button>
                {ragStatus === "done" && (
-                 <div style={{ marginTop: "12px", fontSize: "1rem", color: "#2e7d32", fontWeight: "bold" }}>
+                 <div style={{ marginTop: "12px", fontSize: "1rem", color: "#2fcc16", fontWeight: "bold" }}>
                    RAG performance results are ready!
                  </div>
                )}

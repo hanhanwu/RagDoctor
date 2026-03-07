@@ -264,12 +264,40 @@ async def run_all_in_processes(cfgs, selected_items, documents, url, dataset):
 # ============================================================================
 from pydantic import BaseModel, Field
 import pandas as pd
+import yaml
+import nest_asyncio
+nest_asyncio.apply()
+from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers import OutputFixingParser
 
+with open('eval_prompts.yaml', 'r') as file:
+    prompt_versions = yaml.safe_load(file)
 
-def get_eval_input(json_results):
+eval_llm = ChatGroq(
+    groq_api_key=os.environ["GROQ_TOKEN"],
+    model_name="openai/gpt-oss-20b", 
+    temperature=0.7
+)
+
+
+def get_eval_input(db_url, config_hash):
+    conn = psycopg2.connect(
+        host=db_url.host,
+        port=db_url.port,
+        dbname=db_url.database,
+        user=db_url.username,
+        password=db_url.password,
+    )
+    cur = conn.cursor()
+    cur.execute("SELECT output FROM existing_rag_output WHERE config_hash = %s", 
+                (config_hash,))
+    row = cur.fetchone()
+    json_results = row[0]
+    cur.close()
+    conn.close()
+
     records = []
     for item in json_results:
         record = {
@@ -280,6 +308,32 @@ def get_eval_input(json_results):
         }
         records.append(record)
     return pd.DataFrame(records)
+
+
+async def eval_one_config(config_hash, db_url, rag_lst):
+    input_df = get_eval_input(db_url, config_hash)
+
+    return config_hash, input_df  # TEST ONLY
+
+    # # add ground truth context (needed by retrieval quality eval)
+    # context_df = pd.DataFrame([{'query': r['question'], 'context': r['context']} for r in rag_lst])
+    # input_df = input_df.merge(context_df, on='query')
+
+    # # run RQ and AQ eval concurrently within this RAG
+    # rq_df, aq_df = await asyncio.gather(
+    #     get_retrieval_quality_output_async(input_df, eval_llm, rq_prompt_template),
+    #     get_answer_quality_output_async(input_df, eval_llm, aq_prompt_template),
+    # )
+
+    # all_df = rq_df.merge(aq_df[['query', 'answer_quality_score', 'aq_reasoning']], on='query')
+    # return config_hash, all_df
+
+async def run_auto_eval(config_hashes, db_url, rag_lst):
+    results = await asyncio.gather(*[
+        eval_one_config(config_hash, db_url, rag_lst)
+        for config_hash in config_hashes
+    ])
+    return {config_hash: df for config_hash, df in results}
 
 
 # ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
