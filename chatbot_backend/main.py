@@ -6,6 +6,7 @@ from llama_index.core import Document
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import make_url
 
 from .utils import run_all_in_processes
 
@@ -41,6 +42,7 @@ rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
 
 DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
 DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
+db_url = make_url(DATABASE_URL)
 
 
 def fetch_raw_data(dataset_name: str):
@@ -121,5 +123,5 @@ async def run_rags(request: DatasetRequest):
 
     cfgs = [request.rag1, request.rag2]
     await run_all_in_processes(cfgs, rag_data['rag_lst'],
-                                rag_data['documents'], DATABASE_URL)
+                                rag_data['documents'], db_url)
     return {"status": "success", "dataset": request.dataset}
