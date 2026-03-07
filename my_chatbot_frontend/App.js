@@ -111,13 +111,15 @@ function App() {
   const [rag2SemanticWeight, setRag2SemanticWeight] = useState(0.5);
   const [rag1AGLLM, setRag1AGLLM] = useState(answerGenLLMModels[0].value);
   const [rag2AGLLM, setRag2AGLLM] = useState(answerGenLLMModels[0].value);
-  const [preprocessingStatus, setPreprocessingStatus] = useState("idle");  // "idle" | "running" | "done" | "error"
+  const [preprocessingStatus, setPreprocessingStatus] = useState("idle"); // "idle" | "running" | "done" | "error"
   const [preprocessingMessage, setPreprocessingMessage] = useState("");
+  const [ragStatus, setRagStatus] = useState("idle"); // "idle" | "running" | "done"
 
   const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
 
   const handleRunRAGs = async () => {
-      try {
+    setRagStatus("running");
+    try {
         const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
           method: "POST",
           headers: {
@@ -143,8 +145,10 @@ function App() {
         });
         const data = await response.json();
         console.log("Response:", data);
+        setRagStatus("done");
       } catch (error) {
         console.error("Error running RAGs:", error);
+        setRagStatus("error");
       }
   };
 
@@ -318,24 +322,37 @@ function App() {
             : "Please config the settings of each RAG"}
         </div>
           {datasetClicked && selectedDataset && (
-            <button
-              onClick={handleRunRAGs}
-              style={{
-                width: "80%",
-                background: "#000",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                padding: "12px 24px",
-                fontSize: "1rem",
-                fontWeight: "bold",
-                cursor: "pointer",
-                marginTop: "24px"
-              }}
-            >
-              Confirmed all the selections, run RAGs now!
-            </button>
-          )}
+            ragStatus === "running" ? (
+             <div style={{ marginTop: "24px", fontSize: "1rem", fontWeight: "bold", color: "#07c1fa" }}>
+               Running RAG pipelines...
+             </div>
+            ) : (
+             <>
+               <button
+                 onClick={handleRunRAGs}
+                 style={{
+                   width: "80%",
+                   background: "#000",
+                   color: "#fff",
+                   border: "none",
+                   borderRadius: "6px",
+                   padding: "12px 24px",
+                   fontSize: "1rem",
+                   fontWeight: "bold",
+                   cursor: "pointer",
+                   marginTop: "24px"
+                 }}
+               >
+                 Confirmed all the selections, run RAGs now!
+               </button>
+               {ragStatus === "done" && (
+                 <div style={{ marginTop: "12px", fontSize: "1rem", color: "#2e7d32", fontWeight: "bold" }}>
+                   RAG performance results are ready!
+                 </div>
+               )}
+             </>
+           )
+         )}
       </div>
       <RAGSettings
         title="RAG2 Settings"
