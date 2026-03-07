@@ -2,7 +2,6 @@ import os
 import json
 import yaml
 import asyncio
-from llama_index.core import VectorStoreIndex
 import psycopg2
 from concurrent.futures import ProcessPoolExecutor
 

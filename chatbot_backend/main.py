@@ -123,5 +123,6 @@ async def run_rags(request: DatasetRequest):
 
     cfgs = [request.rag1, request.rag2]
     await run_all_in_processes(cfgs, rag_data['rag_lst'],
-                                rag_data['documents'], db_url)
+                                rag_data['documents'], db_url, 
+                                request.dataset)
     return {"status": "success", "dataset": request.dataset}
