@@ -7,6 +7,7 @@ llama-index-llms-groq==0.4.1
 langchain_community==0.3.29
 langchain==0.3.27
 langchain-core==0.3.83
+langchain-groq==0.3.8
 openpyxl==3.1.5
 pgvector==0.4.2 
 psycopg2-binary==2.9.11
