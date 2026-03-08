@@ -270,7 +270,8 @@ from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from langchain.output_parsers import OutputFixingParser
 
-with open('eval_prompts.yaml', 'r') as file:
+_here = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_here, 'eval_prompts.yaml'), 'r') as file:
     prompt_versions = yaml.safe_load(file)
 
 eval_llm = ChatGroq(
