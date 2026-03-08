@@ -265,8 +265,6 @@ async def run_all_in_processes(cfgs, selected_items, documents, url, dataset):
 from pydantic import BaseModel, Field
 import pandas as pd
 import yaml
-import nest_asyncio
-nest_asyncio.apply()
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
