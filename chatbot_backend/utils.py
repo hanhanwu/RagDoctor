@@ -204,7 +204,6 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
     query_engine = get_query_engine(retriever, reranker=None, llm=llm)
 
     rag_output_lst = asyncio.run(run_rag_async(selected_items, query_engine, concurrency=3))
-    print(len(rag_output_lst))
 
     cur.execute("""
         INSERT INTO existing_rag_output
@@ -310,6 +309,21 @@ def get_eval_input(db_url, config_hash):
 
 
 async def eval_one_config(config_hash, db_url, rag_df):
+    conn = psycopg2.connect(
+        host=db_url.host,
+        port=db_url.port,
+        dbname=db_url.database,
+        user=db_url.username,
+        password=db_url.password,
+    )
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM existing_auto_eval_output WHERE config_hash = %s", (config_hash,))
+    if cur.fetchone() is not None:
+        print(f"Config {config_hash} already exists, skipping Auto Eval.")
+        cur.close()
+        conn.close()
+        return config_hash
+    
     input_df = get_eval_input(db_url, config_hash)
     input_df = pd.merge(input_df, rag_df[['question', 'context']], 
                         left_on='query', right_on='question')
@@ -322,7 +336,21 @@ async def eval_one_config(config_hash, db_url, rag_df):
     answer_quality = await get_answer_quality_output_async(input_df, eval_llm,
                                                             prompt_versions['aq_prompt_template'])
 
-    return config_hash, retrieval_quality, answer_quality
+    cur.execute("""
+            INSERT INTO existing_auto_eval_output
+                (config_hash, retrieval_quality, answer_quality)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (config_hash) DO NOTHING
+        """, (
+            config_hash,
+            json.dumps(retrieval_quality.to_dict(orient='records')),
+            json.dumps(answer_quality.to_dict(orient='records')),
+    ))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return config_hash
 
 
 async def run_auto_eval(config_hashes, db_url, rag_df):
