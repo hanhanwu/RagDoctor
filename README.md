@@ -40,3 +40,13 @@
 * Deploy your new backend changes to Railway, once the service became live
 * Open `https://hanhanchatbot-production.up.railway.app/{FastAPI function prefix}` to see results
   * For example: `https://hanhanchatbot-production.up.railway.app/debug/tables`
+
+## Publish Website
+* Under folder "my_chatbot_frontend/"
+  * Run `npx expo export --platform web` to export web build, this should create a "dist/" folder
+* In Cloudflare, search for "Worker & Pages" --> "Create New Application"
+  * Manually upload "dist/" folder here --> Click "Deploy"
+  * After deployment successfully, can connect to Github repo
+    * Then under "Settings" --> "Build Configuration":
+      * Build Command: `npx expo export --platform web`
+      * Root directory: `my_chatbot_frontend/dist/`
