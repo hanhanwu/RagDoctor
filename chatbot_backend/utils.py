@@ -322,7 +322,7 @@ async def eval_one_config(config_hash, db_url, rag_df):
         print(f"Config {config_hash} already exists, skipping Auto Eval.")
         cur.close()
         conn.close()
-        return config_hash
+        return
     
     input_df = get_eval_input(db_url, config_hash)
     input_df = pd.merge(input_df, rag_df[['question', 'context']], 
@@ -335,6 +335,8 @@ async def eval_one_config(config_hash, db_url, rag_df):
     
     answer_quality = await get_answer_quality_output_async(input_df, eval_llm,
                                                             prompt_versions['aq_prompt_template'])
+    print(f"""retrieval quality shape: {retrieval_quality.shape},
+           answer quality shape: {answer_quality.shape}""")
 
     cur.execute("""
             INSERT INTO existing_auto_eval_output
@@ -350,16 +352,12 @@ async def eval_one_config(config_hash, db_url, rag_df):
     cur.close()
     conn.close()
 
-    return config_hash
-
 
 async def run_auto_eval(config_hashes, db_url, rag_df):
-    results = await asyncio.gather(*[
+    await asyncio.gather(*[
         eval_one_config(config_hash, db_url, rag_df)
         for config_hash in config_hashes
     ])
-    return {config_hash: (retrieval_quality, answer_quality) 
-            for config_hash, retrieval_quality, answer_quality in results}
 
 
 # ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #

@@ -127,7 +127,6 @@ async def run_rags(request: DatasetRequest):
                                 request.dataset)
     print("RAG Config Hashes:", config_hashes)
 
-    config_hashes = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
-    print("Auto Eval Config Hashes:", config_hashes)
+    await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
 
     return {"status": "success"}
