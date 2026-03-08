@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const embeddingModels = [
@@ -178,6 +178,23 @@ function App() {
   const [evalResults, setEvalResults] = useState({ rag1: null, rag2: null });
 
   const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
+
+  useEffect(() => {
+     if (ragStatus !== "busy") return;
+     const poll = setInterval(async () => {
+         try {
+             const res = await fetch(`https://${BACKEND_URL}/rag-lock-status`);
+             const data = await res.json();
+             if (!data.locked) {
+                 setRagStatus("idle");
+                 clearInterval(poll);
+             }
+         } catch {
+             clearInterval(poll);
+         }
+     }, 5000);
+     return () => clearInterval(poll);
+ }, [ragStatus]);
 
   const handleRunRAGs = async () => {
     setRagStatus("running");
@@ -382,7 +399,7 @@ function App() {
                Running RAG Pipelines...
              </div>
             ) : ragStatus === "busy" ? (
-            <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#e67e22" }}>
+            <div style={{ marginTop: "24px", fontSize: "1.2rem", fontWeight: "bold", color: "#e67e22" }}>
                 Another user is running. Please wait 3~ min and try again.
             </div>
             ) : (

@@ -119,6 +119,11 @@ async def get_preprocessing_status():
     return preprocessing_status
 
 
+@app.get("/rag-lock-status")
+async def rag_lock_status():
+    return {"locked": _rag_lock.locked()}
+
+
 _rag_lock = asyncio.Lock()  # prevent the conflicting RAG runs from multiple users
 @app.post("/run-rags")
 async def run_rags(request: DatasetRequest):
