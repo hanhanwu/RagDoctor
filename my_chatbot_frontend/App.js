@@ -206,6 +206,10 @@ function App() {
          }),
         });
         const data = await response.json();
+        if (data.status === "busy") {
+            setRagStatus("busy"); 
+            return;
+        }
         console.log("Response:", data);
         setEvalResults({ rag1: data.rag1, rag2: data.rag2 });
         setRagStatus("done");
@@ -377,6 +381,10 @@ function App() {
              <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#0000ff" }}>
                Running RAG Pipelines...
              </div>
+            ) : ragStatus === "busy" ? (
+            <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#e67e22" }}>
+                Another user is running. Please wait 3~ min and try again.
+            </div>
             ) : (
              <>
                {preprocessingStatus === "done" && <button

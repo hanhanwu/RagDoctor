@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 import os
 import psycopg2
@@ -104,6 +105,9 @@ def run_fiqa_preprocessing(dataset_name: str):
 
 @app.post("/load-fiqa")
 async def load_fiqa(request: PreprocessRequest, background_tasks: BackgroundTasks):
+    # rag_data is global, only 1 run when multiple users chose the same dataset simultaneously
+    if preprocessing_status["status"] == "running":
+        return {"message": "Preprocessing already in progress"}
     preprocessing_status["status"] = "running"
     preprocessing_status["message"] = "Preprocessing the data ..."
     background_tasks.add_task(run_fiqa_preprocessing, request.dataset_name)
@@ -115,21 +119,26 @@ async def get_preprocessing_status():
     return preprocessing_status
 
 
+_rag_lock = asyncio.Lock()  # prevent the conflicting RAG runs from multiple users
 @app.post("/run-rags")
 async def run_rags(request: DatasetRequest):
-    print(f"Selected Dataset: {request.dataset}")
-    print(f"RAG1 Settings: {request.rag1}")
-    print(f"RAG2 Settings: {request.rag2}")
+    if _rag_lock.locked():
+        return {"status": "busy", "message": "A user is already running. Please wait and try again."}
+    
+    async with _rag_lock:
+        print(f"Selected Dataset: {request.dataset}")
+        print(f"RAG1 Settings: {request.rag1}")
+        print(f"RAG2 Settings: {request.rag2}")
 
-    cfgs = [request.rag1, request.rag2]
-    config_hashes = await run_all_in_processes(cfgs, rag_data['rag_lst'],
-                                rag_data['documents'], db_url, 
-                                request.dataset)
-    print("RAG Config Hashes:", config_hashes)
+        cfgs = [request.rag1, request.rag2]
+        config_hashes = await run_all_in_processes(cfgs, rag_data['rag_lst'],
+                                    rag_data['documents'], db_url, 
+                                    request.dataset)
+        print("RAG Config Hashes:", config_hashes)
 
-    eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
-    return {
-        "status": "success",
-        "rag1": eval_results.get(config_hashes[0], {}),
-        "rag2": eval_results.get(config_hashes[1], {}),
-    }
+        eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
+        return {
+            "status": "success",
+            "rag1": eval_results.get(config_hashes[0], {}),
+            "rag2": eval_results.get(config_hashes[1], {}),
+        }

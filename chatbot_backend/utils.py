@@ -4,6 +4,8 @@ import asyncio
 import psycopg2
 import hashlib
 from concurrent.futures import ProcessPoolExecutor
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+from groq import RateLimitError
 
 from llama_index.llms.groq import Groq
 from llama_index.core.retrievers import BaseRetriever
@@ -23,6 +25,14 @@ embedding_map = {
     'BAAI/bge-small-en-v1.5': {'embedding_dim': 384},
 }
 os.environ["GROQ_API_KEY"] = os.environ["GROQ_TOKEN"]
+
+@retry(
+    retry=retry_if_exception_type(RateLimitError),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(5)
+)
+async def _invoke_with_retry(chain, inputs):
+    return await chain.ainvoke(inputs)
 
 
 class HybridRetriever(BaseRetriever):
@@ -401,7 +411,7 @@ async def evaluate_retrieval_quality_async(llm, user_query, context, retrieved_c
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
     )
     chain = prompt | llm | output_parser
-    result = await chain.ainvoke({
+    result = await _invoke_with_retry(chain, {
         "user_query": user_query,
         "context": context,
         "retrieved_content": retrieved_content
@@ -461,7 +471,7 @@ async def evaluate_answer_quality_async(llm, user_query, ai_answer, referenced_a
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
     )
     chain = prompt | llm | output_parser
-    result = await chain.ainvoke({
+    result = await _invoke_with_retry(chain, {
         "user_query": user_query,
         "ai_answer": ai_answer,
         "referenced_answer": referenced_answer
