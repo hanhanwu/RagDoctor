@@ -320,9 +320,15 @@ async def eval_one_config(config_hash, db_url, rag_df):
     cur.execute("SELECT 1 FROM existing_auto_eval_output WHERE config_hash = %s", (config_hash,))
     if cur.fetchone() is not None:
         print(f"Config {config_hash} already exists, skipping Auto Eval.")
+        cur.execute("SELECT retrieval_quality, answer_quality FROM existing_auto_eval_output WHERE config_hash = %s", (config_hash,))
+        row = cur.fetchone()
         cur.close()
         conn.close()
-        return
+        rq_counts = {str(k): v for k, v in pd.DataFrame(row[0])\
+                     ['retrieval_quality_score'].value_counts().to_dict().items()}
+        aq_counts = {str(k): v for k, v in pd.DataFrame(row[1])\
+                     ['answer_quality_score'].value_counts().to_dict().items()}
+        return config_hash, rq_counts, aq_counts
     
     input_df = get_eval_input(db_url, config_hash)
     input_df = pd.merge(input_df, rag_df[['question', 'context']], 
@@ -352,12 +358,24 @@ async def eval_one_config(config_hash, db_url, rag_df):
     cur.close()
     conn.close()
 
+    rq_counts = {str(k): v for k, v in retrieval_quality\
+                 ['retrieval_quality_score'].value_counts().to_dict().items()}
+    aq_counts = {str(k): v for k, v in answer_quality\
+                 ['answer_quality_score'].value_counts().to_dict().items()}
+    return config_hash, rq_counts, aq_counts
+
 
 async def run_auto_eval(config_hashes, db_url, rag_df):
-    await asyncio.gather(*[
+    results = await asyncio.gather(*[
         eval_one_config(config_hash, db_url, rag_df)
         for config_hash in config_hashes
     ])
+
+    return {
+         config_hash: {"retrieval_quality_counts": rq_counts,
+                        "answer_quality_counts": aq_counts}
+         for config_hash, rq_counts, aq_counts in results
+     }
 
 
 # ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #

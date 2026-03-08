@@ -100,6 +100,36 @@ function RAGSettings({ title, selectedModel, onModelChange,
   );
 }
 
+function EvalScoreCounts({ label, counts }) {
+  if (!counts) return null;
+  const sorted = Object.entries(counts).sort((a, b) => Number(a[0]) - Number(b[0]));
+  return (
+    <div style={{ marginTop: "8px" }}>
+      <strong>{label}</strong>
+      <table style={{ borderCollapse: "collapse", marginTop: "4px", width: "100%" }}>
+        <thead>
+          <tr>
+            {sorted.map(([score]) => (
+              <th key={score} style={{ border: "1px solid #ccc", padding: "4px 8px", background: "#f3f3f3" }}>
+                Score {score}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {sorted.map(([score, count]) => (
+              <td key={score} style={{ border: "1px solid #ccc", padding: "4px 8px", textAlign: "center" }}>
+                {count}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function App() {
   const [rag1Model, setRag1Model] = useState(embeddingModels[0].value);
   const [rag2Model, setRag2Model] = useState(embeddingModels[0].value);
@@ -114,6 +144,7 @@ function App() {
   const [preprocessingStatus, setPreprocessingStatus] = useState("idle"); // "idle" | "running" | "done" | "error"
   const [preprocessingMessage, setPreprocessingMessage] = useState("");
   const [ragStatus, setRagStatus] = useState("idle"); // "idle" | "running" | "done"
+  const [evalResults, setEvalResults] = useState({ rag1: null, rag2: null });
 
   const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
 
@@ -145,6 +176,7 @@ function App() {
         });
         const data = await response.json();
         console.log("Response:", data);
+        setEvalResults({ rag1: data.rag1, rag2: data.rag2 });
         setRagStatus("done");
       } catch (error) {
         console.error("Error running RAGs:", error);
@@ -323,7 +355,7 @@ function App() {
         </div>
           {datasetClicked && selectedDataset && (
             ragStatus === "running" ? (
-             <div style={{ marginTop: "24px", fontSize: "1rem", fontWeight: "bold", color: "#07c1fa" }}>
+             <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#07c1fa" }}>
                Running RAG pipelines...
              </div>
             ) : (
@@ -346,9 +378,20 @@ function App() {
                  Confirmed all the selections, run RAGs now!
                </button>
                {ragStatus === "done" && (
-                 <div style={{ marginTop: "12px", fontSize: "1rem", color: "#2fcc16", fontWeight: "bold" }}>
-                   RAG performance results are ready!
-                 </div>
+                <>
+                  <div style={{ marginTop: "12px", fontSize: "2rem", color: "#27b510", fontWeight: "bold" }}>
+                    RAG performance results are ready!
+                  </div>
+                  <div style={{ display: "flex", gap: "24px", marginTop: "20px", width: "80%" }}>
+                    {["rag1", "rag2"].map((key, i) => (
+                      <div key={key} style={{ flex: 1, border: "1px solid #ccc", borderRadius: "8px", padding: "16px", background: "#fafbfc" }}>
+                        <h3 style={{ marginTop: 0 }}>RAG{i + 1} Eval Results</h3>
+                        <EvalScoreCounts label="Retrieval Quality Score" counts={evalResults[key]?.retrieval_quality_counts} />
+                        <EvalScoreCounts label="Answer Quality Score" counts={evalResults[key]?.answer_quality_counts} />
+                      </div>
+                    ))}
+                  </div>
+                </>
                )}
              </>
            )

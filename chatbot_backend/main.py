@@ -127,6 +127,9 @@ async def run_rags(request: DatasetRequest):
                                 request.dataset)
     print("RAG Config Hashes:", config_hashes)
 
-    await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
-
-    return {"status": "success"}
+    eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
+    return {
+        "status": "success",
+        "rag1": eval_results.get(config_hashes[0], {}),
+        "rag2": eval_results.get(config_hashes[1], {}),
+    }
