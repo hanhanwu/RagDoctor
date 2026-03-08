@@ -129,7 +129,12 @@ async def run_rags(request: DatasetRequest):
 
     auto_eval_output = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
     for config_hash, eval_result in auto_eval_output.items():
-        print(f"Auto-evaluation result for config {config_hash}: {len(eval_result)}")
-        print(eval_result.head(n=2))
+        retrieval_quality = eval_result[0]
+        answer_quality = eval_result[1]
+        print(f"Auto-evaluation result for config {config_hash}")
+        print(f"Retrieval Quality:{len(retrieval_quality)}")
+        print(retrieval_quality.head(n=2))
+        print(f"Answer Quality:{len(answer_quality)}")
+        print(answer_quality.head(n=2))
 
     return {"status": "success"}

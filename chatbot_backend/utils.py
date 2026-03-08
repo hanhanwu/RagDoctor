@@ -318,10 +318,11 @@ async def eval_one_config(config_hash, db_url, rag_df):
     retrieval_quality = await get_retrieval_quality_output_async(input_df, eval_llm,
                                                             prompt_versions['rq_prompt_template'])
     retrieval_quality['same_context'] = retrieval_quality['retrieved_content'] == retrieval_quality['context']
-    print(retrieval_quality['retrieval_quality_score'].value_counts())
-    print(retrieval_quality['same_context'].value_counts())
+    
+    answer_quality = await get_answer_quality_output_async(input_df, eval_llm,
+                                                            prompt_versions['aq_prompt_template'])
 
-    return config_hash, retrieval_quality
+    return config_hash, retrieval_quality, answer_quality
 
 
 async def run_auto_eval(config_hashes, db_url, rag_df):
@@ -329,7 +330,8 @@ async def run_auto_eval(config_hashes, db_url, rag_df):
         eval_one_config(config_hash, db_url, rag_df)
         for config_hash in config_hashes
     ])
-    return {config_hash: df for config_hash, df in results}
+    return {config_hash: (retrieval_quality, answer_quality) 
+            for config_hash, retrieval_quality, answer_quality in results}
 
 
 # ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
