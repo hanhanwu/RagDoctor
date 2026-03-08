@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const embeddingModels = [
   { label: "BAAI/bge-small-en-v1.5", value: "BAAI/bge-small-en-v1.5" },
@@ -22,6 +23,7 @@ function RAGSettings({ title, selectedModel, onModelChange,
       background: "#fafbfc",
       boxSizing: "border-box",
       height: "100%",
+      overflowY: "auto",
       minWidth: 0
     }}>
       <h2>{title}</h2>
@@ -100,32 +102,61 @@ function RAGSettings({ title, selectedModel, onModelChange,
   );
 }
 
-function EvalScoreCounts({ label, counts }) {
-  if (!counts) return null;
-  const sorted = Object.entries(counts).sort((a, b) => Number(a[0]) - Number(b[0]));
+const SCORE_COLORS = {
+   "-1": "#e74c3c",
+   "0":  "#e67e22",
+   "1":  "#f1c40f",
+   "2":  "#2ecc71",
+   "3":  "#27ae60",
+   "4":  "#1a6937",
+};
+
+function EvalStackedBarChart({ title, rag1Counts, rag2Counts }) {
+  if (!rag1Counts && !rag2Counts) return null;
+  const allScores = Array.from(
+    new Set([
+      ...Object.keys(rag1Counts || {}),
+      ...Object.keys(rag2Counts || {}),
+    ])
+  ).sort((a, b) => Number(a) - Number(b));
+
+  const data = [
+    { name: "RAG1", ...(rag1Counts || {}) },
+    { name: "RAG2", ...(rag2Counts || {}) },
+  ];
+
+  const totals = data.map(d =>
+    allScores.reduce((sum, score) => sum + (Number(d[score]) || 0), 0)
+  );
+
+  const makeRenderLabel = (score) => ({ x, y, width, height, index }) => {
+   const actualValue = Number(data[index][score]) || 0;
+   if (!actualValue) return null;
+   const pct = Math.round((actualValue / (totals[index] || 1)) * 100);
+   return (
+     <text x={x + width + 4} y={y + height / 2}
+       dominantBaseline="middle" fontSize={11} fill="#333">
+       {`${actualValue} (${pct}%)`}
+     </text>
+   );
+ };
+
   return (
-    <div style={{ marginTop: "8px" }}>
-      <strong>{label}</strong>
-      <table style={{ borderCollapse: "collapse", marginTop: "4px", width: "100%" }}>
-        <thead>
-          <tr>
-            {sorted.map(([score]) => (
-              <th key={score} style={{ border: "1px solid #ccc", padding: "4px 8px", background: "#f3f3f3" }}>
-                Score {score}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            {sorted.map(([score, count]) => (
-              <td key={score} style={{ border: "1px solid #ccc", padding: "4px 8px", textAlign: "center" }}>
-                {count}
-              </td>
-            ))}
-          </tr>
-        </tbody>
-      </table>
+    <div style={{ flex: 1, minWidth: "280px" }}>
+      <h3 style={{ textAlign: "center", marginBottom: "8px" }}>{title}</h3>
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={data} margin={{ right: 80 }} barCategoryGap="20%">
+          <XAxis dataKey="name" />
+          <YAxis allowDecimals={false} />
+          <Tooltip />
+          <Legend />
+          {allScores.map(score => (
+            <Bar key={score} dataKey={score} stackId="a"
+              fill={SCORE_COLORS[score] || "#8884d8"} name={`Score ${score}`}
+              label={makeRenderLabel(score)} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -188,7 +219,7 @@ function App() {
     setSelectedDataset("FIQA Data");
     setDatasetClicked(true);
     setPreprocessingStatus("running");
-    setPreprocessingMessage("preprocessing the data ...");
+    setPreprocessingMessage("Preprocessing the data ...");
     try {
       await fetch(`https://${BACKEND_URL}/load-fiqa`, {
         method: "POST",
@@ -219,6 +250,7 @@ function App() {
       width: "100vw",
       height: "100vh",
       background: "#f5f6fa",
+      fontFamily: "Calibri, sans-serif",
       boxSizing: "border-box"
     }}>
       <RAGSettings
@@ -242,7 +274,8 @@ function App() {
           flex: 2.2,
           boxSizing: "border-box",
           height: "100%",
-          paddingTop: "40px"
+          paddingTop: "16px",
+          overflowY: "auto",
         }}
       >
         <div style={{ textAlign: "center", marginBottom: "16px" }}>
@@ -251,8 +284,8 @@ function App() {
             ----------------------- Made by super Hanhan! -----------------------
           </div>
         </div>
-          <table style={{ width: "80%", borderCollapse: "collapse", marginBottom: "64px", border: "2px solid #888" }}></table>
-        <table style={{ width: "80%", borderCollapse: "collapse", marginBottom: "64px", border: "2px solid #888" }}>
+          <table style={{ width: "80%", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #888" }}></table>
+          <table style={{ width: "80%", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #888" }}>
           <thead>
             <tr>
               <th style={{
@@ -309,7 +342,8 @@ function App() {
                   FIQA Data
                 </button>
                 {selectedDataset === "FIQA Data" && preprocessingStatus !== "idle" && (
-                   <div style={{ marginTop: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "0.85rem", color: "#333" }}>
+                   <div style={{ marginTop: "10px", display: "flex", alignItems: "center",
+                    justifyContent: "center", gap: "8px", fontSize: "0.85rem"}}>
                      {preprocessingStatus === "running" && (
                        <div style={{
                          width: "14px", height: "14px",
@@ -320,7 +354,7 @@ function App() {
                          flexShrink: 0
                        }} />
                      )}
-                     <span>{preprocessingMessage}</span>
+                     <span style={{ color: preprocessingStatus === "running" ? "#0000ff" : "#333" }}>{preprocessingMessage}</span>
                    </div>
                  )}
               </td>
@@ -338,29 +372,14 @@ function App() {
             </tr>
           </tbody>
         </table>
-        <div
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1.3rem",
-            fontWeight: "500",
-            color: "#555"
-          }}
-        >
-          {datasetClicked && selectedDataset
-            ? `Selected Dataset: ${selectedDataset}`
-            : "Please config the settings of each RAG"}
-        </div>
           {datasetClicked && selectedDataset && (
             ragStatus === "running" ? (
-             <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#07c1fa" }}>
-               Running RAG pipelines...
+             <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#0000ff" }}>
+               Running RAG Pipelines...
              </div>
             ) : (
              <>
-               <button
+               {preprocessingStatus === "done" && <button
                  onClick={handleRunRAGs}
                  style={{
                    width: "80%",
@@ -372,25 +391,30 @@ function App() {
                    fontSize: "1rem",
                    fontWeight: "bold",
                    cursor: "pointer",
-                   marginTop: "24px"
+                   marginTop: "8px"
                  }}
                >
                  Confirmed all the selections, run RAGs now!
-               </button>
-               {ragStatus === "done" && (
+               </button>}
+               {preprocessingStatus === "done" && ragStatus === "done" && (
                 <>
-                  <div style={{ marginTop: "12px", fontSize: "2rem", color: "#27b510", fontWeight: "bold" }}>
-                    RAG performance results are ready!
+                  <div style={{ marginTop: "12px", fontSize: "2rem", color: "#9932cc", fontWeight: "bold" }}>
+                    RAG Performance Results Are Ready!
                   </div>
-                  <div style={{ display: "flex", gap: "24px", marginTop: "20px", width: "80%" }}>
-                    {["rag1", "rag2"].map((key, i) => (
-                      <div key={key} style={{ flex: 1, border: "1px solid #ccc", borderRadius: "8px", padding: "16px", background: "#fafbfc" }}>
-                        <h3 style={{ marginTop: 0 }}>RAG{i + 1} Eval Results</h3>
-                        <EvalScoreCounts label="Retrieval Quality Score" counts={evalResults[key]?.retrieval_quality_counts} />
-                        <EvalScoreCounts label="Answer Quality Score" counts={evalResults[key]?.answer_quality_counts} />
-                      </div>
-                    ))}
-                  </div>
+                  <div style={{ display: "flex", gap: "16px", marginTop: "20px", 
+                    width: "100%", boxSizing: "border-box", padding: "0 16px",
+                    flexWrap: "wrap" }}>
+                   <EvalStackedBarChart
+                     title="Retrieval Quality Score"
+                     rag1Counts={evalResults.rag1?.retrieval_quality_counts}
+                     rag2Counts={evalResults.rag2?.retrieval_quality_counts}
+                   />
+                   <EvalStackedBarChart
+                     title="Answer Quality Score"
+                     rag1Counts={evalResults.rag1?.answer_quality_counts}
+                     rag2Counts={evalResults.rag2?.answer_quality_counts}
+                   />
+                 </div>
                 </>
                )}
              </>
