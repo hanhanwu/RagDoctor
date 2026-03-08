@@ -315,8 +315,8 @@ async def eval_one_config(config_hash, db_url, rag_df):
                         left_on='query', right_on='question')
     input_df.drop(columns=['question'], inplace=True)
 
-    retrieval_quality = asyncio.run(get_retrieval_quality_output_async(input_df, eval_llm,
-                                                            prompt_versions['rq_prompt_template']))
+    retrieval_quality = await get_retrieval_quality_output_async(input_df, eval_llm,
+                                                            prompt_versions['rq_prompt_template'])
     retrieval_quality['same_context'] = retrieval_quality['retrieved_content'] == retrieval_quality['context']
     print(retrieval_quality['retrieval_quality_score'].value_counts())
     print(retrieval_quality['same_context'].value_counts())
