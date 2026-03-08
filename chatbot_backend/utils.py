@@ -142,7 +142,7 @@ async def _run_one(dct, query_engine):
     }
 
 
-async def run_eval_async(items, query_engine, concurrency=3):
+async def run_rag_async(items, query_engine, concurrency=3):
     sem = asyncio.Semaphore(concurrency)
 
     async def bound_run(dct):
@@ -203,8 +203,8 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
         )
     query_engine = get_query_engine(retriever, reranker=None, llm=llm)
 
-    eval_lst = asyncio.run(run_eval_async(selected_items, query_engine, concurrency=3))
-    print(len(eval_lst))
+    rag_output_lst = asyncio.run(run_rag_async(selected_items, query_engine, concurrency=3))
+    print(len(rag_output_lst))
 
     cur.execute("""
         INSERT INTO existing_rag_output
@@ -219,7 +219,7 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
         retriever_top_n,
         retriever_alpha,
         llm_str,
-        json.dumps(eval_lst),
+        json.dumps(rag_output_lst),
     ))
     conn.commit()
     cur.close()
@@ -309,27 +309,24 @@ def get_eval_input(db_url, config_hash):
     return pd.DataFrame(records)
 
 
-async def eval_one_config(config_hash, db_url, rag_lst):
+async def eval_one_config(config_hash, db_url, rag_df):
     input_df = get_eval_input(db_url, config_hash)
+    input_df = pd.merge(input_df, rag_df[['question', 'context']], 
+                        left_on='query', right_on='question')
+    input_df.drop(columns=['question'], inplace=True)
 
-    return config_hash, input_df  # TEST ONLY
+    retrieval_quality = asyncio.run(get_retrieval_quality_output_async(input_df, eval_llm,
+                                                            prompt_versions['rq_prompt_template']))
+    retrieval_quality['same_context'] = retrieval_quality['retrieved_content'] == retrieval_quality['context']
+    print(retrieval_quality['retrieval_quality_score'].value_counts())
+    print(retrieval_quality['same_context'].value_counts())
 
-    # # add ground truth context (needed by retrieval quality eval)
-    # context_df = pd.DataFrame([{'query': r['question'], 'context': r['context']} for r in rag_lst])
-    # input_df = input_df.merge(context_df, on='query')
+    return config_hash, retrieval_quality
 
-    # # run RQ and AQ eval concurrently within this RAG
-    # rq_df, aq_df = await asyncio.gather(
-    #     get_retrieval_quality_output_async(input_df, eval_llm, rq_prompt_template),
-    #     get_answer_quality_output_async(input_df, eval_llm, aq_prompt_template),
-    # )
 
-    # all_df = rq_df.merge(aq_df[['query', 'answer_quality_score', 'aq_reasoning']], on='query')
-    # return config_hash, all_df
-
-async def run_auto_eval(config_hashes, db_url, rag_lst):
+async def run_auto_eval(config_hashes, db_url, rag_df):
     results = await asyncio.gather(*[
-        eval_one_config(config_hash, db_url, rag_lst)
+        eval_one_config(config_hash, db_url, rag_df)
         for config_hash in config_hashes
     ])
     return {config_hash: df for config_hash, df in results}

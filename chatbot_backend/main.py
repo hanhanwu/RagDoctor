@@ -127,7 +127,7 @@ async def run_rags(request: DatasetRequest):
                                 request.dataset)
     print("RAG Config Hashes:", config_hashes)
 
-    auto_eval_output = await run_auto_eval(config_hashes, db_url, rag_data['rag_lst'])
+    auto_eval_output = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
     for config_hash, eval_result in auto_eval_output.items():
         print(f"Auto-evaluation result for config {config_hash}: {len(eval_result)}")
         print(eval_result.head(n=2))
