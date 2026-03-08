@@ -49,4 +49,4 @@
   * After deployment successfully, can connect to Github repo
     * Then under "Settings" --> "Build Configuration":
       * Build Command: `npx expo export --platform web`
-      * Root directory: `my_chatbot_frontend/dist/`
+      * Root directory: `my_chatbot_frontend`
