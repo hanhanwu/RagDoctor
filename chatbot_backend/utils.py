@@ -143,7 +143,7 @@ async def _run_one(dct, query_engine):
 
 
 async def run_rag_async(items, query_engine, concurrency=3):
-    sem = asyncio.Semaphore(concurrency)
+    sem = asyncio.Semaphore(concurrency)  # Semaphore to throttle concurrency
 
     async def bound_run(dct):
         async with sem:
@@ -378,9 +378,15 @@ async def process_retrieval_quality_record_async(llm, record, rq_prompt_template
     return record
 
 
-async def get_retrieval_quality_output_async(input_df, llm, rq_prompt_template):
+async def get_retrieval_quality_output_async(input_df, llm, rq_prompt_template, concurrency=2):
+    sem = asyncio.Semaphore(concurrency)  # Semaphore to throttle concurrency
+
+    async def sem_task(record):
+        async with sem:
+            return await process_retrieval_quality_record_async(llm, record, rq_prompt_template)
+
     input_records = input_df.to_dict(orient='records')
-    tasks = [process_retrieval_quality_record_async(llm, record, rq_prompt_template) for record in input_records]
+    tasks = [sem_task(record) for record in input_records]
     output_lst = await asyncio.gather(*tasks)
     output_df = pd.DataFrame(output_lst)
     return output_df
@@ -432,9 +438,15 @@ async def process_answer_quality_record_async(llm, record, aq_prompt_template):
     return record
 
 
-async def get_answer_quality_output_async(input_df, llm, aq_prompt_template):
+async def get_answer_quality_output_async(input_df, llm, aq_prompt_template, concurrency=2):
+    sem = asyncio.Semaphore(concurrency)  # Semaphore to throttle concurrency
+
+    async def sem_task(record):
+        async with sem:
+            return await process_answer_quality_record_async(llm, record, aq_prompt_template)
+
     input_records = input_df.to_dict(orient='records')
-    tasks = [process_answer_quality_record_async(llm, record, aq_prompt_template) for record in input_records]
+    tasks = [sem_task(record) for record in input_records]
     output_lst = await asyncio.gather(*tasks)
     output_df = pd.DataFrame(output_lst)
     return output_df
