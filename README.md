@@ -32,9 +32,6 @@
   * If you have multiple Railway projects, their domain can all be 8080, as long as they're separated deployments, cuz in Railway each project has its own container
   * Copy the generated domain to App.js as the value of `BACKEND_URL`, make sure you have `https://` before the URL!
 
-### Build Speed Up Notes 🚀
-* If there's large packages to install, using docker is faster than Railway's default Railpack, cuz Dockerfile steps create layers and only layers that changed are rebuilt. So if requirements.txt stay the same, it's reusable with Docker build. Railpack treats every deployment as a fresh environment.
-* `uv` install is faster than `pip` install as it uses Uses a precompiled wheel cache and optimized resolver, also skips unnecessary dependency checks.
 
 ## Test Railway Backend
 * Deploy your new backend changes to Railway, once the service became live
@@ -50,3 +47,18 @@
     * Then under "Settings" --> "Build Configuration":
       * Build Command: `npx expo export --platform web`
       * Root directory: `my_chatbot_frontend`
+
+
+## Learning Notes 🍀
+### Build Speed Up Notes 🚀
+* If there's large packages to install, using docker is faster than Railway's default Railpack, cuz Dockerfile steps create layers and only layers that changed are rebuilt. So if requirements.txt stay the same, it's reusable with Docker build. Railpack treats every deployment as a fresh environment.
+* `uv` install is faster than `pip` install as it uses Uses a precompiled wheel cache and optimized resolver, also skips unnecessary dependency checks.
+
+### Prevent Multi-User Conflicts
+* Because `rag_data` is global, only run data preprocessing once when multiple users selected same data simultiously 
+* Added `asyncio.Lock` to allow only one user to run `/run-rags` each time to avoid Railway memory exhaustion or users' results contamination
+  * 🍄 TO-DO: change to Job queue for multi-users, rather than having users re-run manually after lock released
+* Groq could have 429 rate limit errors --> replace `_invoke_with_retry()` with `await chain.ainvoke()`
+
+### Security
+* Cloudflare's free domain is blocked by LinkedIn and other websites because too many fraud groups use those --> I purchased `hanhanwu.com` domain from Spaceship, then updated Cloudflare URL

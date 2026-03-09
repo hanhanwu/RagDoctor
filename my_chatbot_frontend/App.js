@@ -111,8 +111,28 @@ const SCORE_COLORS = {
    "4":  "#1a6937",
 };
 
-function EvalStackedBarChart({ title, rag1Counts, rag2Counts }) {
+const RETRIEVAL_SCORE_DEFS = [
+  { score: "-1", label: "Completely irrelevant retrieved content" },
+  { score: "0",  label: "Mostly irrelevant, minor relevance" },
+  { score: "1",  label: "Partially relevant content" },
+  { score: "2",  label: "Mostly relevant content" },
+  { score: "3",  label: "Highly relevant content" },
+  { score: "4",  label: "Perfectly relevant content" },
+];
+
+const ANSWER_SCORE_DEFS = [
+  { score: "-1", label: "Completely wrong or harmful answer" },
+  { score: "0",  label: "Mostly incorrect answer" },
+  { score: "1",  label: "Partially correct answer" },
+  { score: "2",  label: "Mostly correct answer" },
+  { score: "3",  label: "Highly accurate answer" },
+  { score: "4",  label: "Perfect answer" },
+];
+
+
+function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }) {
   if (!rag1Counts && !rag2Counts) return null;
+  const [showTip, setShowTip] = useState(false);
   const allScores = Array.from(
     new Set([
       ...Object.keys(rag1Counts || {}),
@@ -143,7 +163,39 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts }) {
 
   return (
     <div style={{ flex: 1, minWidth: "280px" }}>
-      <h3 style={{ textAlign: "center", marginBottom: "8px" }}>{title}</h3>
+      <div style={{ textAlign: "center", marginBottom: "8px", position: "relative" }}>
+        <h3
+          style={{ display: "inline", cursor: "help" }}
+          onMouseEnter={() => setShowTip(true)}
+          onMouseLeave={() => setShowTip(false)}
+        >
+          {title}
+        </h3>
+        {showTip && scoreDefinitions && (
+          <div style={{
+            position: "absolute",
+            top: "100%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#fff",
+            border: "1px solid #ccc",
+            borderRadius: "6px",
+            padding: "10px 14px",
+            zIndex: 100,
+            whiteSpace: "nowrap",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+            fontSize: "0.85rem",
+            textAlign: "left",
+            pointerEvents: "none",
+          }}>
+            {scoreDefinitions.map(({ score, label }) => (
+              <div key={score} style={{ marginBottom: "4px" }}>
+                <span style={{ fontWeight: "bold", color: SCORE_COLORS[score] || "#333" }}>Score {score}:</span> {label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data} margin={{ right: 80 }} barCategoryGap="20%">
           <XAxis dataKey="name" />
@@ -419,12 +471,14 @@ function App() {
                    marginTop: "8px"
                  }}
                >
-                 Confirmed all the selections, run RAGs now!
+                 {ragStatus === "done"
+                  ? <>Specify <span style={{ color: "#FFFF00" }}>New</span> RAG Settings, Click Me <span style={{ color: "#FFFF00" }}>Again</span> to Run RAGs!</>
+                  : "Specify RAG Settings, then Click Me to Run RAGs!"}
                </button>}
                {preprocessingStatus === "done" && ragStatus === "done" && (
                 <>
                   <div style={{ marginTop: "12px", fontSize: "2rem", color: "#9932cc", fontWeight: "bold" }}>
-                    RAG Performance Results Are Ready!
+                    RAG Performance Comparison Shown Below:
                   </div>
                   <div style={{ display: "flex", gap: "16px", marginTop: "20px", 
                     width: "100%", boxSizing: "border-box", padding: "0 16px",
@@ -433,11 +487,13 @@ function App() {
                      title="Retrieval Quality Score"
                      rag1Counts={evalResults.rag1?.retrieval_quality_counts}
                      rag2Counts={evalResults.rag2?.retrieval_quality_counts}
+                     scoreDefinitions={RETRIEVAL_SCORE_DEFS}
                    />
                    <EvalStackedBarChart
                      title="Answer Quality Score"
                      rag1Counts={evalResults.rag1?.answer_quality_counts}
                      rag2Counts={evalResults.rag2?.answer_quality_counts}
+                     scoreDefinitions={ANSWER_SCORE_DEFS}
                    />
                  </div>
                 </>
