@@ -103,8 +103,8 @@ function RAGSettings({ title, selectedModel, onModelChange,
 }
 
 const SCORE_COLORS = {
-   "-1": "#e74c3c",
-   "0":  "#e67e22",
+   "-1": "#9932cc",
+   "0":  "#e74c3c",
    "1":  "#f1c40f",
    "2":  "#2ecc71",
    "3":  "#27ae60",
@@ -112,21 +112,20 @@ const SCORE_COLORS = {
 };
 
 const RETRIEVAL_SCORE_DEFS = [
-  { score: "-1", label: "Completely irrelevant retrieved content" },
-  { score: "0",  label: "Mostly irrelevant, minor relevance" },
-  { score: "1",  label: "Partially relevant content" },
-  { score: "2",  label: "Mostly relevant content" },
-  { score: "3",  label: "Highly relevant content" },
-  { score: "4",  label: "Perfectly relevant content" },
+  { score: "-1", label: "Retrieved content is more relevant than human labeled context" },
+  { score: "0",  label: "Completely irrelevant retrieved content" },
+  { score: "1",  label: "Relevant retrieved content but missing critical info" },
+  { score: "2",  label: "Partially relevant retrieved content" },
+  { score: "3",  label: "Highly relevant retrieved content" },
 ];
 
 const ANSWER_SCORE_DEFS = [
-  { score: "-1", label: "Completely wrong or harmful answer" },
-  { score: "0",  label: "Mostly incorrect answer" },
-  { score: "1",  label: "Partially correct answer" },
-  { score: "2",  label: "Mostly correct answer" },
+  { score: "-1", label: "AI's answer is better than the 'ground truth'" },
+  { score: "0",  label: "Completely irrelevant answer" },
+  { score: "1",  label: "Relevant answer but missing critical info" },
+  { score: "2",  label: "Partially correct answer" },
   { score: "3",  label: "Highly accurate answer" },
-  { score: "4",  label: "Perfect answer" },
+  { score: "4",  label: "AI's answer added more critical info" },
 ];
 
 
