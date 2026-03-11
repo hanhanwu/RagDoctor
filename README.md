@@ -60,5 +60,18 @@
   * 🍄 TO-DO: change to Job queue for multi-users, rather than having users re-run manually after lock released
 * Groq could have 429 rate limit errors --> replace `_invoke_with_retry()` with `await chain.ainvoke()`
 
+### How to Automatically Upload Files into Google Drive
+* `pip install google-auth google-auth-oauthlib google-api-python-client openpyxl`
+* Download credentials JSON into wuhan/.gcp/
+  * Enable Google Drive API first
+  * Go to APIs & Services → OAuth consent screen -> External -> Desktop App (type)
+  * Download JSON before closing the window!
+* Add your Google Drive login email as test user
+  * Go to https://console.cloud.google.com/apis/credentials/consent
+  * Audience -> Test users -> Add users
+* Find your Google Drive folder ID through the folder's URL
+* First time running `upload_to_google_drive()` it will generate `token.pickle` file after you finished authentication, later you don't need to do authentication any more
+
+
 ### Security
 * Cloudflare's free domain is blocked by LinkedIn and other websites because too many fraud groups use those --> I purchased `hanhanwu.com` domain from Spaceship, then updated Cloudflare URL
