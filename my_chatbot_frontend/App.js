@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const embeddingModels = [
@@ -227,28 +227,40 @@ function App() {
   const [preprocessingMessage, setPreprocessingMessage] = useState("");
   const [ragStatus, setRagStatus] = useState("idle"); // "idle" | "running" | "done"
   const [evalResults, setEvalResults] = useState({ rag1: null, rag2: null });
+  const [jobId, setJobId] = useState(null);
+  const [queuePosition, setQueuePosition] = useState(null);
+  const pollRef = useRef(null);
 
   const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
 
   useEffect(() => {
-     if (ragStatus !== "busy") return;
-     const poll = setInterval(async () => {
+     if (!jobId) return;
+     pollRef.current = setInterval(async () => {
          try {
-             const res = await fetch(`https://${BACKEND_URL}/rag-lock-status`);
+             const res = await fetch(`https://${BACKEND_URL}/job-status/${jobId}`);
              const data = await res.json();
-             if (!data.locked) {
-                 setRagStatus("idle");
-                 clearInterval(poll);
+             if (data.status === "queued") {
+                 setRagStatus("queued");
+                 setQueuePosition(data.position);
+             } else if (data.status === "running") {
+                 setRagStatus("running");
+                 setQueuePosition(null);
+             } else if (data.status === "done") {
+                 setEvalResults({ rag1: data.rag1, rag2: data.rag2 });
+                 setRagStatus("done");
+                clearInterval(pollRef.current);
+              } else if (data.status === "error") {
+                 setRagStatus("error");
+                 clearInterval(pollRef.current);
              }
          } catch {
-             clearInterval(poll);
+             clearInterval(pollRef.current);
          }
      }, 5000);
-     return () => clearInterval(poll);
- }, [ragStatus]);
+     return () => clearInterval(pollRef.current);
+}, [jobId]);
 
   const handleRunRAGs = async () => {
-    setRagStatus("running");
     try {
         const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
           method: "POST",
@@ -274,13 +286,10 @@ function App() {
          }),
         });
         const data = await response.json();
-        if (data.status === "busy") {
-            setRagStatus("busy"); 
-            return;
-        }
-        console.log("Response:", data);
-        setEvalResults({ rag1: data.rag1, rag2: data.rag2 });
-        setRagStatus("done");
+        console.log("Job queued:", data);
+        setJobId(data.job_id);
+        setQueuePosition(data.position);
+        setRagStatus("queued");
       } catch (error) {
         console.error("Error running RAGs:", error);
         setRagStatus("error");
@@ -445,14 +454,14 @@ function App() {
           </tbody>
         </table>
           {datasetClicked && selectedDataset && (
-            ragStatus === "running" ? (
+            ragStatus === "queued" ? (
+             <div style={{ marginTop: "24px", fontSize: "1.2rem", fontWeight: "bold", color: "#e67e22" }}>
+                 You are #{queuePosition} in queue. Your run will start automatically...
+             </div>
+            ) : ragStatus === "running" ? (
              <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#0000ff" }}>
                Running RAG Pipelines...
              </div>
-            ) : ragStatus === "busy" ? (
-            <div style={{ marginTop: "24px", fontSize: "1.2rem", fontWeight: "bold", color: "#e67e22" }}>
-                Another user is running. Please wait 3~ min and try again.
-            </div>
             ) : (
              <>
                {preprocessingStatus === "done" && <button

@@ -1,8 +1,10 @@
 import asyncio
 import traceback
 import os
+import uuid
 import psycopg2
 import pandas as pd
+from contextlib import asynccontextmanager
 from llama_index.core import Document
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,8 +13,11 @@ from sqlalchemy import make_url
 
 from .utils import run_all_in_processes, run_auto_eval
 
-
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(process_job_queue())
+    yield
+app = FastAPI(lifespan=lifespan)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -40,6 +45,10 @@ class DatasetRequest(BaseModel):
 
 preprocessing_status = {"status": "idle", "message": ""}
 rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
+
+_job_queue: asyncio.Queue = asyncio.Queue()
+_job_results: dict = {}   # job_id -> result dict
+_queue_order: list = []   # job_ids waiting, in order
 
 DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
 DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
@@ -114,36 +123,52 @@ async def load_fiqa(request: PreprocessRequest, background_tasks: BackgroundTask
     return {"message": f"{request.dataset_name} preprocessing started"}
 
 
+async def process_job_queue():
+    while True:
+        job_id, request = await _job_queue.get()
+        if job_id in _queue_order:
+            _queue_order.remove(job_id)
+        _job_results[job_id] = {"status": "running"}
+        try:
+            cfgs = [request.rag1, request.rag2]
+            config_hashes = await run_all_in_processes(
+                cfgs, rag_data['rag_lst'], rag_data['documents'], db_url, request.dataset
+            )
+            eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
+            _job_results[job_id] = {
+                "status": "done",
+                "rag1": eval_results.get(config_hashes[0], {}),
+                "rag2": eval_results.get(config_hashes[1], {}),
+            }
+        except Exception as e:
+            traceback.print_exc()
+            _job_results[job_id] = {"status": "error", "message": str(e)}
+        finally:
+            _job_queue.task_done()
+
+
 @app.get("/preprocessing-status")
 async def get_preprocessing_status():
     return preprocessing_status
 
 
-@app.get("/rag-lock-status")
-async def rag_lock_status():
-    return {"locked": _rag_lock.locked()}
-
-
-_rag_lock = asyncio.Lock()  # prevent the conflicting RAG runs from multiple users
 @app.post("/run-rags")
 async def run_rags(request: DatasetRequest):
-    if _rag_lock.locked():
-        return {"status": "busy", "message": "A user is already running. Please wait and try again."}
-    
-    async with _rag_lock:
-        print(f"Selected Dataset: {request.dataset}")
-        print(f"RAG1 Settings: {request.rag1}")
-        print(f"RAG2 Settings: {request.rag2}")
+    job_id = str(uuid.uuid4())
+    is_running = any(v["status"] == "running" for v in _job_results.values())
+    position = len(_queue_order) + (1 if is_running else 0) + 1
+    _job_results[job_id] = {"status": "queued", "position": position}
+    _queue_order.append(job_id)
+    await _job_queue.put((job_id, request))
+    print(f"Job {job_id} queued at position {position}. Dataset: {request.dataset}")
+    return {"status": "queued", "job_id": job_id, "position": position}
 
-        cfgs = [request.rag1, request.rag2]
-        config_hashes = await run_all_in_processes(cfgs, rag_data['rag_lst'],
-                                    rag_data['documents'], db_url, 
-                                    request.dataset)
-        print("RAG Config Hashes:", config_hashes)
 
-        eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
-        return {
-            "status": "success",
-            "rag1": eval_results.get(config_hashes[0], {}),
-            "rag2": eval_results.get(config_hashes[1], {}),
-        }
+@app.get("/job-status/{job_id}")
+async def get_job_status(job_id: str):
+    if job_id not in _job_results:
+        return {"status": "not_found"}
+    result = dict(_job_results[job_id])
+    if result["status"] == "queued" and job_id in _queue_order:
+        result["position"] = _queue_order.index(job_id) + 1
+    return result
