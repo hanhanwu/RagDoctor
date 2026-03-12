@@ -289,7 +289,7 @@ function App() {
         console.log("Job queued:", data);
         setJobId(data.job_id);
         setQueuePosition(data.position);
-        setRagStatus(data.position === 1 ? "running" : "queued");
+        setRagStatus(data.position === 0 ? "running" : "queued");
       } catch (error) {
         console.error("Error running RAGs:", error);
         setRagStatus("error");
@@ -456,7 +456,9 @@ function App() {
           {datasetClicked && selectedDataset && (
             ragStatus === "queued" ? (
              <div style={{ marginTop: "24px", fontSize: "1.2rem", fontWeight: "bold", color: "#e67e22" }}>
-                 You are #{queuePosition} in queue. Your run will start automatically...
+                 {queuePosition - 1 === 0
+                    ? "You're next! Waiting for the current run to finish..."
+                    : `${queuePosition - 1} user(s) waiting ahead of you...`}
              </div>
             ) : ragStatus === "running" ? (
              <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#0000ff" }}>

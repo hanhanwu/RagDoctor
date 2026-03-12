@@ -156,7 +156,7 @@ async def get_preprocessing_status():
 async def run_rags(request: DatasetRequest):
     job_id = str(uuid.uuid4())
     is_running = any(v["status"] == "running" for v in _job_results.values())
-    position = len(_queue_order) + (1 if is_running else 0) + 1
+    position = len(_queue_order) + (1 if is_running else 0)
     _job_results[job_id] = {"status": "queued", "position": position}
     _queue_order.append(job_id)
     await _job_queue.put((job_id, request))
@@ -170,5 +170,6 @@ async def get_job_status(job_id: str):
         return {"status": "not_found"}
     result = dict(_job_results[job_id])
     if result["status"] == "queued" and job_id in _queue_order:
-        result["position"] = _queue_order.index(job_id) + 1
+        is_running = any(v["status"] == "running" for v in _job_results.values())
+        result["position"] = _queue_order.index(job_id) + (1 if is_running else 0)
     return result
