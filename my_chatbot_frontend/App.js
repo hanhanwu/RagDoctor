@@ -289,7 +289,7 @@ function App() {
         console.log("Job queued:", data);
         setJobId(data.job_id);
         setQueuePosition(data.position);
-        setRagStatus("queued");
+        setRagStatus(data.position === 1 ? "running" : "queued");
       } catch (error) {
         console.error("Error running RAGs:", error);
         setRagStatus("error");
