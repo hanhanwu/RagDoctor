@@ -238,6 +238,7 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
 
     return config_hash
 
+
 def run_one(cfg, selected_items, documents, db_url, dataset):
     llm_str = cfg.answer_gen_llm
     embed_model_str = cfg.embedding_model
