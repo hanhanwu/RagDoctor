@@ -91,7 +91,7 @@ eval_llm = ChatGroq(
 
 @retry(
     retry=retry_if_exception_type(RateLimitError),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    wait=wait_exponential(multiplier=2, min=5, max=60),
     stop=stop_after_attempt(5)
 )
 async def _invoke_with_retry(chain, inputs):
@@ -142,9 +142,15 @@ async def eval_one_config(config_hash, db_url, rag_df):
     return config_hash, retrieval_quality, answer_quality
 
 
-async def run_auto_eval(config_hashes, db_url, rag_df):
+async def run_auto_eval(config_hashes, db_url, rag_df, max_concurrent_configs=1):
+    sem = asyncio.Semaphore(max_concurrent_configs)  # Semaphore to limit concurrent runs of different configs
+
+    async def throttled_eval(config_hash):
+        async with sem:
+            return await eval_one_config(config_hash, db_url, rag_df)
+
     results = await asyncio.gather(*[
-        eval_one_config(config_hash, db_url, rag_df)
+        throttled_eval(config_hash)
         for config_hash in config_hashes
     ])
 
@@ -201,7 +207,7 @@ async def process_retrieval_quality_record_async(llm, record, rq_prompt_template
 
 
 async def get_retrieval_quality_output_async(input_df, llm, rq_prompt_template, concurrency=2):
-    sem = asyncio.Semaphore(concurrency)  # Semaphore to throttle concurrency
+    sem = asyncio.Semaphore(concurrency)  # Semaphore to throttle concurrency for running records in parallel
 
     async def sem_task(record):
         async with sem:
@@ -262,7 +268,7 @@ async def process_answer_quality_record_async(llm, record, aq_prompt_template):
 
 
 async def get_answer_quality_output_async(input_df, llm, aq_prompt_template, concurrency=2):
-    sem = asyncio.Semaphore(concurrency)  # Semaphore to throttle concurrency
+    sem = asyncio.Semaphore(concurrency)  # Semaphore to throttle concurrency for running records in parallel
 
     async def sem_task(record):
         async with sem:
