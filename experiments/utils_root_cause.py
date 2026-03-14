@@ -164,14 +164,13 @@ async def run_auto_eval(config_hashes, db_url, rag_df, max_concurrent_configs=1)
 # ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
 class RetrievalQuality(BaseModel):
     score: int = Field(description="""Score with:
-                - Only generate the score as -1, 0 or 1 or 2 or 3 or 4
+                - Only generate the score as -1, 0 or 1 or 2 or 3
                 - Scoring as -1: if the RETRIEVED CONTENT is much more relevant to the USER QUERY than the CONTEXT
                 - Scoring as 0: if the RETRIEVED CONTENT is completely irrelevant to the USER QUERY
                 - If the CONTEXT is strongly relevant to the USER QUERY:
                     - Scoring as 1: if the RETRIEVED CONTENT is relevant to the USER QUERY but doesn't contain any critical information from the CONTEXT
                     - Scoring as 2: if the RETRIEVED CONTENT is relevant to the USER QUERY but only partially contains critical information from the CONTEXT
                     - Scoring as 3: if the RETRIEVED CONTENT is relevant to USER QUERY and contains all the critical information from the CONTEXT
-                    - Scoring as 4: if the RETRIEVED CONTENT is relevant to USER QUERY and contains more critical information than the CONTEXT that can help answer the USER QUERY
             """)
     reasoning: str = Field(description="Reasoning for the given score.")
 
@@ -224,7 +223,7 @@ async def get_retrieval_quality_output_async(input_df, llm, rq_prompt_template, 
 # ------------------------------------ ANSWER QUALITY ------------------------------------ #
 class AnswerQuality(BaseModel):
     score: int = Field(description="""Score with:
-    - Only generate the score as -1, 0 or 1 or 2 or 3 or 4
+    - Only generate the score as -1, 0 or 1 or 2 or 3
     - Scoring as -1: if the AI's ANSWER is much more relevant to the USER QUERY than the REFERENCED ANSWER
     - Scoring as 0: if the AI's ANSWER is completely irrelevant to the USER QUERY
     - If the REFERENCED ANSWER is strongly relevant to the USER QUERY:
@@ -232,7 +231,6 @@ class AnswerQuality(BaseModel):
         - Scoring as 1: if the AI's ANSWER is relevant to the USER QUERY but doesn't contain any critical information from the REFERENCED ANSWER
         - Scoring as 2: if the AI's ANSWER is relevant to the USER QUERY but only partially contains critical information from the REFERENCED ANSWER
         - Scoring as 3: if the AI's ANSWER is relevant to USER QUERY and contains all the critical information from the REFERENCED ANSWER
-        - Scoring as 4: if the AI's ANSWER is relevant to USER QUERY and contains more critical information than the REFERENCED ANSWER that can help answer the USER QUERY
     """)
     reasoning: str = Field(description="Reasoning for the given score.")
 
