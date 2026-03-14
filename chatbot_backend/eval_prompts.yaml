@@ -76,14 +76,14 @@ aq_prompt_template: |
             - Read and understand the full meaning of the USER QUERY
             - Read the REFERENCED ANSWER and summary its key information relevant to the USER QUERY
             - Compare the AI's ANSWER with the USER QUERY and the REFERENCED ANSWER, and evaluate based on the RUBRICS below:
-                - Only generate the score as -1, 0 or 1 or 2 or 3 or 4
+                - Only generate the score as -1, 0 or 1 or 2 or 3
                 - Scoring as -1: if the AI's ANSWER is much more relevant to the USER QUERY than the REFERENCED ANSWER
                 - Scoring as 0: if the AI's ANSWER is completely irrelevant to the USER QUERY
                 - If the REFERENCED ANSWER is strongly relevant to the USER QUERY:
+                    - Scoring as 0: if AI's ANSWER is significantly conflict with the REFERENCED ANSWER
                     - Scoring as 1: if the AI's ANSWER is relevant to the USER QUERY but doesn't contain any critical information from the REFERENCED ANSWER
                     - Scoring as 2: if the AI's ANSWER is relevant to the USER QUERY but only partially contains critical information from the REFERENCED ANSWER
                     - Scoring as 3: if the AI's ANSWER is relevant to USER QUERY and contains all the critical information from the REFERENCED ANSWER
-                    - Scoring as 4: if the AI's ANSWER is relevant to USER QUERY and contains more critical information than the REFERENCED ANSWER that can help answer the USER QUERY
             - Provide detailed scoring reasons
 
     ### EXAMPLE OUTPUT FORMAT ###
@@ -93,7 +93,7 @@ aq_prompt_template: |
             }}
             {{
                 "score": -1,
-                "reasoning": "The AI's ANSWER seems irrelevant to the USER QUERY compared to the REFERENCED ANSWER"
+                "reasoning": "The REFERENCED ANSWER seems irrelevant to the USER QUERY compared to the AI's ANSWER"
             }}
             {{
                 "score": 3,
@@ -112,9 +112,10 @@ aq_prompt_template: |
                 "reasoning": "AI's ANSWER is completely irrelevant to the USER QUERY"
             }}
             {{
-                "score": 4,
-                "reasoning": "AI's ANSWER is relevant to the USER QUERY and contains more critical information than the REFERENCED ANSWER that can help answer the USER QUERY"
+                "score": 0,
+                "reasoning": "The REFERENCED ANSWER is strongly relevant to the USER QUERY, the AI's ANSWER is strongly conflicting with the REFERENCED ANSWER"
             }}
+
 
     ### OUTPUT Requirements ###
     - Make sure your output reasoning is brief but comprehensive, covering all key points that justify your score

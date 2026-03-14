@@ -107,14 +107,13 @@ const SCORE_COLORS = {
    "0":  "#e74c3c",
    "1":  "#f1c40f",
    "2":  "#2ecc71",
-   "3":  "#27ae60",
-   "4":  "#1a6937",
+   "3":  "#1a6937",
 };
 
 const RETRIEVAL_SCORE_DEFS = [
   { score: "-1", label: "Retrieved content is more relevant than human labeled context" },
   { score: "0",  label: "Completely irrelevant retrieved content" },
-  { score: "1",  label: "Relevant retrieved content but missing critical info" },
+  { score: "1",  label: "Relevant retrieved content but low value" },
   { score: "2",  label: "Partially relevant retrieved content" },
   { score: "3",  label: "Highly relevant retrieved content" },
 ];
@@ -122,10 +121,9 @@ const RETRIEVAL_SCORE_DEFS = [
 const ANSWER_SCORE_DEFS = [
   { score: "-1", label: "AI's answer is better than the 'ground truth'" },
   { score: "0",  label: "Completely irrelevant answer" },
-  { score: "1",  label: "Relevant answer but missing critical info" },
+  { score: "1",  label: "Relevant answer but low value" },
   { score: "2",  label: "Partially correct answer" },
   { score: "3",  label: "Highly accurate answer" },
-  { score: "4",  label: "AI's answer added more critical info" },
 ];
 
 
