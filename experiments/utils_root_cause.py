@@ -278,3 +278,52 @@ async def get_answer_quality_output_async(input_df, llm, aq_prompt_template, con
     output_df = pd.DataFrame(output_lst)
     return output_df
 # ------------------------------------ ANSWER QUALITY ------------------------------------ #
+
+
+# ============================================================================
+# ROOT CAUSE ANALYSIS AGENT SYSTEM
+# ============================================================================
+def get_auto_eval_output(db_url):
+    conn = psycopg2.connect(
+        host=db_url.host,
+        port=db_url.port,
+        dbname=db_url.database,
+        user=db_url.username,
+        password=db_url.password,
+    )
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            t1.config_hash,
+            t1.dataset,
+            t1.embedding_model,
+            t1.top_n_retrieval,
+            t1.semantic_weight,
+            t1.answer_gen_llm,
+            rq.value->>'query' AS query,
+            rq.value->>'context' AS context,
+            rq.value->>'retrieved_content' AS retrieved_content,
+            rq.value->>'same_context' AS same_context,
+            rq.value->>'retrieval_quality_score' AS retrieval_quality_score,
+            rq.value->>'rq_reasoning' AS rq_reasoning,
+            aq.value->>'referenced_answer' AS referenced_answer,
+            aq.value->>'ai_answer' AS ai_answer,
+            aq.value->>'answer_quality_score' AS answer_quality_score,
+            aq.value->>'aq_reasoning' AS aq_reasoning
+        FROM existing_rag_output AS t1
+        JOIN existing_auto_eval_output AS t2
+            ON t1.config_hash = t2.config_hash,
+        jsonb_array_elements(t2.retrieval_quality) WITH ORDINALITY AS rq(value, idx),
+        jsonb_array_elements(t2.answer_quality) WITH ORDINALITY AS aq(value, idx)
+        WHERE rq.idx = aq.idx
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    col_names = [desc[0] for desc in cur.description]
+    df = pd.DataFrame(rows, columns=col_names)
+
+    return df
+
