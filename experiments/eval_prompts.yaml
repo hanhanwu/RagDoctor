@@ -134,3 +134,38 @@ aq_prompt_template: |
     Your evaluation should follow this format:
     {format_instructions}
 # ------------------------------------------ ANSWER QUALITY ------------------------------------------ #
+
+
+# ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #
+review_reasoning_prompt_template: |
+    You are reviewing the reasoning text, responsible for generating the score based on score definition and the reasoning text.
+
+    ### SCORE DEFINITION ###
+    - Score as -1 means: AI's output is much more relevant than the referenced information.
+    - Score as 0 means: AI's output is completely irrelevant to the user query. 
+    - Score as 1 means: AI's output has low value to the user query.
+    - Score as 2 means: AI's output partially covers the critical information in the referenced information, but still missing other critical information.
+    - Score as 3 means: AI's output contains all the critical information in the referenced information.
+
+    ### REVIEW INSTRUCTIONS ###
+    - Review the REASONING TEXT, comparing with the SCORE DEFINITION, generate an the score align with the SCORE DEFINITION
+    - Only generate an integer score in [-1, 0, 1, 2, 3]
+    - Output MUST follow this format:
+        {{
+            "score_after_review": int
+        }}
+
+    ### EXAMPLEOUTPUT ###
+        {{
+            "score_after_review": -1
+        }}
+        {{
+            "score_after_review": 0
+        }}
+
+    Here is the REASONING TEXT:
+    {eval_reasoning}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #

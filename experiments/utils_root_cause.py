@@ -327,3 +327,20 @@ def get_auto_eval_output(db_url):
 
     return df
 
+
+class ScoreAfterReview(BaseModel):
+    score: int = Field(description="Only generate an integer score in [-1, 0, 1, 2, 3]")
+
+async def review_sr_async(llm, eval_reasoning):
+    base_parser = PydanticOutputParser(pydantic_object=ScoreAfterReview)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['review_reasoning_prompt_template'],
+        input_variables=["eval_reasoning"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await _invoke_with_retry(chain, {
+        "eval_reasoning": eval_reasoning
+    })
+    return result.score
