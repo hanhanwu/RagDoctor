@@ -1,11 +1,12 @@
+import pickle
+import os
+import io
+import re
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from openpyxl.styles import Alignment
-import pickle
-import os
-import io
 
 
 def upload_to_google_drive(df, folder_id, output_filename):
@@ -283,6 +284,11 @@ async def get_answer_quality_output_async(input_df, llm, aq_prompt_template, con
 # ============================================================================
 # ROOT CAUSE ANALYSIS AGENT SYSTEM
 # ============================================================================
+def contains_conflict(text: str) -> bool:
+    pattern = r'\b(conflict\w*|contradict\w*)\b'
+    return re.search(pattern, text, re.IGNORECASE) is not None
+
+
 def get_auto_eval_output(db_url):
     conn = psycopg2.connect(
         host=db_url.host,
@@ -328,8 +334,10 @@ def get_auto_eval_output(db_url):
     return df
 
 
+# ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #
 class ScoreAfterReview(BaseModel):
     score: int = Field(description="Only generate an integer score in [-1, 0, 1, 2, 3]")
+
 
 async def review_sr_async(llm, eval_reasoning):
     base_parser = PydanticOutputParser(pydantic_object=ScoreAfterReview)
@@ -344,3 +352,28 @@ async def review_sr_async(llm, eval_reasoning):
         "eval_reasoning": eval_reasoning
     })
     return result.score
+# ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #
+
+
+# ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #
+class TextAlignment(BaseModel):
+    score: int = Field(description="Only generate an integer score as 0 or 1. 1 means aligned, 0 means not aligned.")
+    reasoning: str = Field(description="Reasoning for the given score.")
+
+
+async def review_ta_async(llm, user_query, text_a, text_b):
+    base_parser = PydanticOutputParser(pydantic_object=TextAlignment)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['review_text_alignment_template'],
+        input_variables=["user_query", "text_a", "text_b"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await _invoke_with_retry(chain, {
+        "user_query": user_query,
+        "text_a": text_a,
+        "text_b": text_b
+    })
+    return result
+# ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #

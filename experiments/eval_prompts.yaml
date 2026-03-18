@@ -169,3 +169,51 @@ review_reasoning_prompt_template: |
     Your output should follow this format:
     {format_instructions}
 # ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #
+
+
+# ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #
+review_text_alignment_template: |
+    You're reviewing TEXT_A and TEXT_B to see whether their critical information align.
+
+        ### REVIEW INSTRUCTIONS ###
+        - Understand "critical information" means key information that can impact the USER QUERY.
+        - Check whether TEXT_B covers all the critical information mentioned in TEXT_A. If so, score as 1, meaning aligned.
+        - If TEXT_A has critical information that's never mentioned in TEXT_B, score as 0, meaning misalignment.
+        - If TEXT_A has critical information conflicts with TEXT_B, score as 0, meaning misalignment.
+        - Only generate an integer score as 1 or 0:
+          - Score 1 means TEXT_A and TEXT_B are aligned.
+          - Score 0 means TEXT_A and TEXT_B are misaligned.
+        - Explain the reasons of your judgement.
+
+        ### EXAMPLE OUTPUT FORMAT ###
+            {{
+                "text_alignment_score": 1
+                "reasoning": "The TEXT_B covers all the critical information mentioned in TEXT_A, so they are aligned."
+            }}
+            {{
+
+                "text_alignment_score": 1
+                "reasoning": "The TEXT_A contains some extra information never mentioned in TEXT_B but such information has low impact to the USER QUERY, so they are aligned."
+            }}
+            {{
+                "text_alignment_score": 0
+                "reasoning": "The TEXT_A contains a good amount of critical information never mentioned in TEXT_B, so they are misaligned."
+            }}
+            {{
+                "text_alignment_score": 0
+                "reasoning": "The TEXT_A contains critical information that conflicts with TEXT_B, so they are misaligned."
+            }}
+            
+
+        Here is the USER QUERY:
+        {user_query}
+
+        Here is the TEXT_A:
+        {text_a}
+
+        Here is the TEXT_B:
+        {text_b}
+
+        Your output should follow this format:
+        {format_instructions}
+# ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #
