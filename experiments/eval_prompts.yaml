@@ -217,3 +217,91 @@ review_text_alignment_template: |
         Your output should follow this format:
         {format_instructions}
 # ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #
+
+
+# ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+review_query_quality_template: |
+    You're reviewing the USER_QUERY and judge its quality.
+
+        ### REVIEW INSTRUCTIONS ###
+        - ONLY return "clear" or "ambiguous" as the query quality score:
+          - "clear" means the USER QUERY is clear and specific, without ambiguity.
+          - "ambiguous" means the USER QUERY is ambiguous, with unclear intent or multiple interpretations.
+          - Don't return any other values.
+
+        ### EXAMPLE OUTPUT FORMAT ###
+            {{
+                "query_quality_score": "clear",
+                "reasoning": "The USER QUERY is clear and specific, without ambiguity."
+            }}
+            {{
+                "query_quality_score": "ambiguous",
+                "reasoning": "The USER QUERY is ambiguous, with unclear intent or multiple interpretations."
+            }}
+            
+
+        Here is the USER QUERY:
+        {user_query}
+
+        Your output should follow this format:
+        {format_instructions}
+# ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+
+
+# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
+review_rag_system_template: |
+    ### INSTRUCTIONS ###
+        The RAG pipeline is built by LlamaIndex tools.
+        Look at the RETRIEVAL_QUALITY_SCORE with its its reasoning RQ_REASONING.
+        Also look at the ANSWER_QUALITY_SCORE with its reasoning AQ_REASONING.
+        
+        Then review RAG pipeline's details, include:
+            - The USER_QUERY and QUERY_QUALITY.
+            - The SYSTEM_PROMPT that guides LlamaIndex's RetrieverQueryEngine.
+            - The RAG pipeline's config is covered in RAG_CONFIG
+
+        Look at all the details, and explain potential root causes of why answer quality scores can't reach to 3.
+        Also provide suggestions to help improve the RAG pipeline's performance.
+
+    ### OUTPUT FORMAT ###
+        {{
+            "root_cause_analysis": "Explanation of potential root causes",
+            "improvement_suggestions": "Suggestions to improve RAG pipeline performance"
+        }}
+
+    ### EXAMPLE OUTPUT ###
+        {{
+            "root_cause_analysis": "The low answer quality score is mainly caused by low retrieval quality.",
+            "improvement_suggestions": "Suggest to change to change to a better embedding model. 
+                                        Also suggest to increase the weight of semantic similarity score in the retrieval process,
+                                         so that retrieved documents can be more relevant to the user query."
+        }}
+
+
+    Here is the RETRIEVAL_QUALITY_SCORE:
+    {retrieval_quality_score}
+
+    Here is the RQ_REASONING:
+    {rq_reasoning}
+
+    Here is the ANSWER_QUALITY_SCORE:
+    {answer_quality_score}
+
+    Here is the AQ_REASONING:
+    {aq_reasoning}
+
+    Here is the USER_QUERY:
+    {user_query}
+
+    Here is the QUERY_QUALITY:
+    {query_quality}
+
+    Here is the SYSTEM_PROMPT used in the RAG pipeline:
+    {system_prompt}
+
+    Here is the RAG pipeline's config:
+    {rag_config}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #

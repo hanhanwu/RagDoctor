@@ -9,6 +9,21 @@ from google.auth.transport.requests import Request
 from openpyxl.styles import Alignment
 
 
+FINANCIAL_RAG_SYSTEM_PROMPT = """You are a finance expert.
+Your role is to answer financial questions with precision and clarity.
+
+GUIDELINES:
+- Answer only use retrieved content as reference, do NOT use any other information
+- If the retrieved content does not contain relevant information to answer the question, say "I don't know" instead of making up an answer
+- If data is missing or unclear, state it explicitly - do NOT make up numbers
+- Include relevant financial metrics and ratios in your analysis
+- Flag any assumptions you make about the data
+- For complex queries, structure responses with clear breakdowns
+
+FINANCIAL ACCURACY IS CRITICAL. When in doubt, cite your source and indicate uncertainty.
+"""
+
+
 def upload_to_google_drive(df, folder_id, output_filename):
     SCOPES = ['https://www.googleapis.com/auth/drive.file']
     TOKEN_FILE = r'C:\Users\wuhan\.gcp\token.pickle'
@@ -377,3 +392,54 @@ async def review_ta_async(llm, user_query, text_a, text_b):
     })
     return result
 # ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #
+
+
+# ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+class QueryQuality(BaseModel):
+    query_quality: str = Field(description="Only generate a value from ['clear', 'ambiguous']")
+
+
+async def review_query_quality_async(llm, user_query):
+    base_parser = PydanticOutputParser(pydantic_object=QueryQuality)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['review_query_quality_template'],
+        input_variables=["user_query"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await _invoke_with_retry(chain, {
+        "user_query": user_query
+    })
+    return result
+# ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+
+
+# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
+class RAGSystemReview(BaseModel):
+    root_cause_analysis: str = Field(description="Explain potential root causes of RAG's answer quality score.")
+    improvement_suggestions: str = Field(description="Provide suggestions to improve the RAG performance.")
+
+
+async def review_rag_system_async(llm, retrieval_quality_score, rq_reasoning,
+                                   answer_quality_score, aq_reasoning,
+                                 user_query, query_quality, system_prompt, rag_config):
+    base_parser = PydanticOutputParser(pydantic_object=RAGSystemReview)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['review_rag_system_template'],
+        input_variables=["retrieval_quality_score", "rq_reasoning",
+                        "answer_quality_score", "aq_reasoning",
+                        "user_query", "query_quality",
+                        "system_prompt", "rag_config"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await _invoke_with_retry(chain, {
+        "retrieval_quality_score": retrieval_quality_score, "rq_reasoning": rq_reasoning,
+        "answer_quality_score": answer_quality_score, "aq_reasoning": aq_reasoning,
+        "user_query": user_query, "query_quality": query_quality,
+        "system_prompt": system_prompt, "rag_config": rag_config
+    })
+    return result
+# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
