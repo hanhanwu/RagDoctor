@@ -231,12 +231,11 @@ review_query_quality_template: |
 
         ### EXAMPLE OUTPUT FORMAT ###
             {{
-                "query_quality_score": "clear",
-                "reasoning": "The USER QUERY is clear and specific, without ambiguity."
+                "query_quality": "clear",
+
             }}
             {{
-                "query_quality_score": "ambiguous",
-                "reasoning": "The USER QUERY is ambiguous, with unclear intent or multiple interpretations."
+                "query_quality": "ambiguous",
             }}
             
 
@@ -246,6 +245,31 @@ review_query_quality_template: |
         Your output should follow this format:
         {format_instructions}
 # ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+
+
+# ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
+query_expansion_template: |
+    The USER_QUERY is ambiguous. Rewrite it into 1 to 3 clearer, specific query variants.
+
+    ### INSTRUCTIONS ###
+    - Each variant should resolve ambiguity by assuming a distinct plausible intent.
+    - Keep each variant concise and self-contained.
+    - Generate only 1 to 3 variants, less tokens is better if they can cover the ambiguity.
+
+    ### EXAMPLE OUTPUT ###
+        {{
+            "query_variants": [
+                "What was Amazon's net revenue in fiscal year 2022?",
+                "What were Amazon's total operating expenses in 2022?"
+            ]
+        }}
+
+    Here is the USER_QUERY:
+    {user_query}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
 
 
 # ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
@@ -268,6 +292,8 @@ review_rag_system_template: |
             "root_cause_analysis": "Explanation of potential root causes",
             "improvement_suggestions": "Suggestions to improve RAG pipeline performance"
         }}
+        - Make sure the text in root_cause_analysis is brief but comprehensive, less than 50 tokens if you can.
+        - Make sure improvement_suggestions is actionable and specific, use bullet point for each suggestion, each bullet point is less than 50 tokens if you can.
 
     ### EXAMPLE OUTPUT ###
         {{

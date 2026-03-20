@@ -411,8 +411,29 @@ async def review_query_quality_async(llm, user_query):
     result = await _invoke_with_retry(chain, {
         "user_query": user_query
     })
-    return result
+    return result.query_quality
 # ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+
+
+# ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
+class QueryExpansion(BaseModel):
+    query_variants: list[str] = Field(description="A list of 1 to 3 clearer, specific query variants.")
+
+
+async def expand_query_async(llm, user_query):
+    base_parser = PydanticOutputParser(pydantic_object=QueryExpansion)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['query_expansion_template'],
+        input_variables=["user_query"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    result = await _invoke_with_retry(chain, {
+        "user_query": user_query
+    })
+    return result.query_variants
+# ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
 
 
 # ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
