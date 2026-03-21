@@ -134,3 +134,194 @@ aq_prompt_template: |
     Your evaluation should follow this format:
     {format_instructions}
 # ------------------------------------------ ANSWER QUALITY ------------------------------------------ #
+
+
+# ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #
+review_reasoning_prompt_template: |
+    You are reviewing the reasoning text, responsible for generating the score based on score definition and the reasoning text.
+
+    ### SCORE DEFINITION ###
+    - Score as -1 means: AI's output is much more relevant than the referenced information.
+    - Score as 0 means: AI's output is completely irrelevant to the user query. 
+    - Score as 1 means: AI's output has low value to the user query.
+    - Score as 2 means: AI's output partially covers the critical information in the referenced information, but still missing other critical information.
+    - Score as 3 means: AI's output contains all the critical information in the referenced information.
+
+    ### REVIEW INSTRUCTIONS ###
+    - Review the REASONING TEXT, comparing with the SCORE DEFINITION, generate an the score align with the SCORE DEFINITION
+    - Only generate an integer score in [-1, 0, 1, 2, 3]
+    - Output MUST follow this format:
+        {{
+            "score_after_review": int
+        }}
+
+    ### EXAMPLEOUTPUT ###
+        {{
+            "score_after_review": -1
+        }}
+        {{
+            "score_after_review": 0
+        }}
+
+    Here is the REASONING TEXT:
+    {eval_reasoning}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #
+
+
+# ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #
+review_text_alignment_template: |
+    You're reviewing TEXT_A and TEXT_B to see whether their critical information align.
+
+        ### REVIEW INSTRUCTIONS ###
+        - Understand "critical information" means key information that can impact the USER QUERY.
+        - Check whether TEXT_B covers all the critical information mentioned in TEXT_A. If so, score as 1, meaning aligned.
+        - If TEXT_A has critical information that's never mentioned in TEXT_B, score as 0, meaning misalignment.
+        - If TEXT_A has critical information conflicts with TEXT_B, score as 0, meaning misalignment.
+        - Only generate an integer score as 1 or 0:
+          - Score 1 means TEXT_A and TEXT_B are aligned.
+          - Score 0 means TEXT_A and TEXT_B are misaligned.
+        - Explain the reasons of your judgement.
+
+        ### EXAMPLE OUTPUT FORMAT ###
+            {{
+                "text_alignment_score": 1
+                "reasoning": "The TEXT_B covers all the critical information mentioned in TEXT_A, so they are aligned."
+            }}
+            {{
+
+                "text_alignment_score": 1
+                "reasoning": "The TEXT_A contains some extra information never mentioned in TEXT_B but such information has low impact to the USER QUERY, so they are aligned."
+            }}
+            {{
+                "text_alignment_score": 0
+                "reasoning": "The TEXT_A contains a good amount of critical information never mentioned in TEXT_B, so they are misaligned."
+            }}
+            {{
+                "text_alignment_score": 0
+                "reasoning": "The TEXT_A contains critical information that conflicts with TEXT_B, so they are misaligned."
+            }}
+            
+
+        Here is the USER QUERY:
+        {user_query}
+
+        Here is the TEXT_A:
+        {text_a}
+
+        Here is the TEXT_B:
+        {text_b}
+
+        Your output should follow this format:
+        {format_instructions}
+# ------------------------------------------ TEXT ALIGNMENT ------------------------------------------ #
+
+
+# ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+review_query_quality_template: |
+    You're reviewing the USER_QUERY and judge its quality.
+
+        ### REVIEW INSTRUCTIONS ###
+        - ONLY return "clear" or "ambiguous" as the query quality score:
+          - "clear" means the USER QUERY is clear and specific, without ambiguity.
+          - "ambiguous" means the USER QUERY is ambiguous, with unclear intent or multiple interpretations.
+          - Don't return any other values.
+
+        ### EXAMPLE OUTPUT FORMAT ###
+            {{
+                "query_quality": "clear",
+
+            }}
+            {{
+                "query_quality": "ambiguous",
+            }}
+            
+
+        Here is the USER QUERY:
+        {user_query}
+
+        Your output should follow this format:
+        {format_instructions}
+# ------------------------------------------ QUERY QUALITY ------------------------------------------ #
+
+
+# ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
+query_expansion_template: |
+    The USER_QUERY is ambiguous. Rewrite it into 1 to 3 clearer, specific query variants.
+
+    ### INSTRUCTIONS ###
+    - Each variant should resolve ambiguity by assuming a distinct plausible intent.
+    - Keep each variant concise and self-contained.
+    - Generate only 1 to 3 variants, less tokens is better if they can cover the ambiguity.
+
+    ### EXAMPLE OUTPUT ###
+        {{
+            "query_variants": [
+                "What was Amazon's net revenue in fiscal year 2022?",
+                "What were Amazon's total operating expenses in 2022?"
+            ]
+        }}
+
+    Here is the USER_QUERY:
+    {user_query}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
+
+
+# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
+review_rag_system_template: |
+    ### INSTRUCTIONS ###
+        The RAG pipeline is built by LlamaIndex tools. All the user queries are clear.
+        Look at the AVERAGE_RETRIEVAL_QUALITY_SCORE and a list of RETRIEVAL_QUALITY_REASONS.
+        Also look at the AVERAGE_ANSWER_QUALITY_SCORE and a list of ANSWER_QUALITY_REASONS.
+        
+        Then review RAG pipeline's details, include:
+            - The SYSTEM_PROMPT that guides LlamaIndex's RetrieverQueryEngine.
+            - The RAG pipeline's config is covered in RAG_CONFIG
+
+        Look at all the details, and explain potential root causes of why there're answer quality scores lower than 3.
+        Also provide suggestions to help improve the RAG pipeline's performance.
+
+    ### OUTPUT FORMAT ###
+        {{
+            "root_cause_analysis": "Explanation of potential root causes",
+            "improvement_suggestions": "Suggestions to improve RAG pipeline performance"
+        }}
+        - Make sure the text in root_cause_analysis is brief but comprehensive, less than 30 tokens if you can.
+        - Make sure improvement_suggestions is actionable and specific, use bullet point for each suggestion, each bullet point is less than 30 tokens if you can.
+
+    ### EXAMPLE OUTPUT ###
+        {{
+            "root_cause_analysis": "There are more score 1 and 0 in answer quality scores, which is mainly caused by low retrieval quality.",
+            "improvement_suggestions": "Suggest to change to:
+                                    - change to a better embedding model
+                                    - increase the weight of semantic similarity score in the retrieval process
+                                    So that retrieved documents can be more relevant to the user query."
+        }}
+
+
+    Here is the AVERAGE_RETRIEVAL_QUALITY_SCORE:
+    {avg_rq_score}
+
+    Here is the RETRIEVAL_QUALITY_REASONS:
+    {rq_reasons}
+
+    Here is the AVERAGE_ANSWER_QUALITY_SCORE:
+    {avg_aq_score}
+
+    Here is the ANSWER_QUALITY_REASONS:
+    {aq_reasons}
+
+    Here is the SYSTEM_PROMPT used in the RAG pipeline:
+    {system_prompt}
+
+    Here is the RAG pipeline's config:
+    {rag_config}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
