@@ -321,7 +321,7 @@ def get_eval_input(db_url, config_hash):
     return pd.DataFrame(records)
 
 
-async def eval_one_config(config_hash, db_url, rag_df):
+async def eval_one_config(config_hash, db_url, rag_df, cfg):
     conn = psycopg2.connect(
         host=db_url.host,
         port=db_url.port,
@@ -337,11 +337,18 @@ async def eval_one_config(config_hash, db_url, rag_df):
         row = cur.fetchone()
         cur.close()
         conn.close()
-        rq_counts = {str(k): v for k, v in pd.DataFrame(row[0])\
-                     ['retrieval_quality_score'].value_counts().to_dict().items()}
-        aq_counts = {str(k): v for k, v in pd.DataFrame(row[1])\
-                     ['answer_quality_score'].value_counts().to_dict().items()}
-        return config_hash, rq_counts, aq_counts
+        rq_df = pd.DataFrame(row[0])
+        aq_df = pd.DataFrame(row[1])
+        full_df = rq_df.copy()
+        full_df['answer_quality_score'] = aq_df['answer_quality_score'].values
+        full_df['aq_reasoning'] = aq_df['aq_reasoning'].values
+        full_df['embedding_model'] = cfg.embedding_model
+        full_df['top_n_retrieval'] = cfg.top_n
+        full_df['semantic_weight'] = cfg.semantic_weight
+        full_df['answer_gen_llm'] = cfg.answer_gen_llm
+        rq_counts = {str(k): v for k, v in rq_df['retrieval_quality_score'].value_counts().to_dict().items()}
+        aq_counts = {str(k): v for k, v in aq_df['answer_quality_score'].value_counts().to_dict().items()}
+        return config_hash, rq_counts, aq_counts, full_df
     
     input_df = get_eval_input(db_url, config_hash)
     input_df = pd.merge(input_df, rag_df[['question', 'context']], 
@@ -371,23 +378,32 @@ async def eval_one_config(config_hash, db_url, rag_df):
     cur.close()
     conn.close()
 
+    full_df = retrieval_quality.copy()
+    full_df['answer_quality_score'] = answer_quality['answer_quality_score'].values
+    full_df['aq_reasoning'] = answer_quality['aq_reasoning'].values
+    full_df['embedding_model'] = cfg.embedding_model
+    full_df['top_n_retrieval'] = cfg.top_n
+    full_df['semantic_weight'] = cfg.semantic_weight
+    full_df['answer_gen_llm'] = cfg.answer_gen_llm
+
     rq_counts = {str(k): v for k, v in retrieval_quality\
                  ['retrieval_quality_score'].value_counts().to_dict().items()}
     aq_counts = {str(k): v for k, v in answer_quality\
                  ['answer_quality_score'].value_counts().to_dict().items()}
-    return config_hash, rq_counts, aq_counts
+    return config_hash, rq_counts, aq_counts, full_df
 
 
-async def run_auto_eval(config_hashes, db_url, rag_df):
+async def run_auto_eval(config_hashes, db_url, rag_df, cfgs):
     results = await asyncio.gather(*[
-        eval_one_config(config_hash, db_url, rag_df)
-        for config_hash in config_hashes
+        eval_one_config(config_hash, db_url, rag_df, cfg)
+        for config_hash, cfg in zip(config_hashes, cfgs)
     ])
 
     return {
-         config_hash: {"retrieval_quality_counts": rq_counts,
-                        "answer_quality_counts": aq_counts}
-         for config_hash, rq_counts, aq_counts in results
+        config_hash: {"retrieval_quality_counts": rq_counts, 
+                      "answer_quality_counts": aq_counts,
+                        "eval_df": full_df}
+        for config_hash, rq_counts, aq_counts, full_df in results
      }
 
 
@@ -850,11 +866,7 @@ async def run_rca_on_all(df, max_concurrent=2):
     return await asyncio.gather(*[throttled_invoke(s) for s in states])
 
 
-async def run_rca(config_hash_1: str, config_hash_2: str, db_url) -> dict:
-    full_df = get_auto_eval_output(db_url)
-    df1 = full_df[full_df["config_hash"] == config_hash_1].reset_index(drop=True)
-    df2 = full_df[full_df["config_hash"] == config_hash_2].reset_index(drop=True)
-
+async def run_rca(df1: pd.DataFrame, df2: pd.DataFrame) -> dict:
     rca1_states, rca2_states = await asyncio.gather(
         run_rca_on_all(df1),
         run_rca_on_all(df2),

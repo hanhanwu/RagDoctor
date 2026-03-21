@@ -135,12 +135,14 @@ async def process_job_queue():
             config_hashes = await run_all_in_processes(
                 cfgs, rag_data['rag_lst'], rag_data['documents'], db_url, request.dataset
             )
-            eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
+            eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'], cfgs)
             _job_results[job_id] = {
                 "status": "done",
                 "config_hashes": config_hashes,
                 "rag1": eval_results.get(config_hashes[0], {}),
                 "rag2": eval_results.get(config_hashes[1], {}),
+                "eval_df_1": eval_results.get(config_hashes[0], {}).get("eval_df"),
+                "eval_df_2": eval_results.get(config_hashes[1], {}).get("eval_df"),
             }
         except Exception as e:
             traceback.print_exc()
@@ -177,9 +179,11 @@ async def get_job_status(job_id: str):
     return result
 
 
-async def _run_rca_task(rca_job_id: str, config_hash_1: str, config_hash_2: str):
+async def _run_rca_task(rca_job_id: str, job_id: str):
     try:
-        result = await run_rca(config_hash_1, config_hash_2, db_url)
+        job = _job_results[job_id]
+        # result = await run_rca(job["eval_df_1"], job["eval_df_2"])
+        result = await run_rca(job["eval_df_1"].head(5), job["eval_df_2"].head(5))  # TEST ONLY
         _rca_results[rca_job_id] = {"status": "done", **result}
     except Exception as e:
         traceback.print_exc()
@@ -196,7 +200,7 @@ async def run_rca_endpoint(job_id: str, background_tasks: BackgroundTasks):
         return {"status": "error", "message": "Config hashes not found in job"}
     rca_job_id = str(uuid.uuid4())
     _rca_results[rca_job_id] = {"status": "running"}
-    background_tasks.add_task(_run_rca_task, rca_job_id, config_hashes[0], config_hashes[1])
+    background_tasks.add_task(_run_rca_task, rca_job_id, job_id)
     return {"status": "running", "rca_job_id": rca_job_id}
 
 
