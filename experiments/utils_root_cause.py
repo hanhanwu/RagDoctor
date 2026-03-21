@@ -438,28 +438,24 @@ async def expand_query_async(llm, user_query):
 
 # ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
 class RAGSystemReview(BaseModel):
-    root_cause_analysis: str = Field(description="Explain potential root causes of RAG's answer quality score.")
+    root_cause_analysis: str = Field(description="Explain potential root causes of RAG's answer quality scores.")
     improvement_suggestions: str = Field(description="Provide suggestions to improve the RAG performance.")
 
 
-async def review_rag_system_async(llm, retrieval_quality_score, rq_reasoning,
-                                   answer_quality_score, aq_reasoning,
-                                 user_query, query_quality, system_prompt, rag_config):
+def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, aq_reasons,
+                                system_prompt, rag_config):
     base_parser = PydanticOutputParser(pydantic_object=RAGSystemReview)
     output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
     prompt = PromptTemplate(
         template=prompt_versions['review_rag_system_template'],
-        input_variables=["retrieval_quality_score", "rq_reasoning",
-                        "answer_quality_score", "aq_reasoning",
-                        "user_query", "query_quality",
+        input_variables=["avg_rq_score", "rq_reasons", "avg_aq_score", "aq_reasons",
                         "system_prompt", "rag_config"],
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
     )
     chain = prompt | llm | output_parser
-    result = await _invoke_with_retry(chain, {
-        "retrieval_quality_score": retrieval_quality_score, "rq_reasoning": rq_reasoning,
-        "answer_quality_score": answer_quality_score, "aq_reasoning": aq_reasoning,
-        "user_query": user_query, "query_quality": query_quality,
+    result = chain.invoke({
+        "avg_rq_score": avg_rq_score, "rq_reasons": rq_reasons,
+        "avg_aq_score": avg_aq_score, "aq_reasons": aq_reasons,
         "system_prompt": system_prompt, "rag_config": rag_config
     })
     return result
