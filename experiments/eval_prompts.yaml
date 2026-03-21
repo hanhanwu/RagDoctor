@@ -291,8 +291,8 @@ review_rag_system_template: |
             "root_cause_analysis": "Explanation of potential root causes",
             "improvement_suggestions": "Suggestions to improve RAG pipeline performance"
         }}
-        - Make sure the text in root_cause_analysis is brief but comprehensive, less than 50 tokens if you can.
-        - Make sure improvement_suggestions is actionable and specific, use bullet point for each suggestion, each bullet point is less than 50 tokens if you can.
+        - Make sure the text in root_cause_analysis is brief but comprehensive, less than 30 tokens if you can.
+        - Make sure improvement_suggestions is actionable and specific, use bullet point for each suggestion, each bullet point is less than 30 tokens if you can.
 
     ### EXAMPLE OUTPUT ###
         {{
