@@ -210,7 +210,65 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
   );
 }
 
+function RCAResultsPage({ results }) {
+  if (!results) return (
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.2rem" }}>
+      ⏳ Analysis is running... this page will update automatically when done.
+    </div>
+  );
+  return (
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif" }}>
+      <h1 style={{ color: "#800000", marginBottom: "24px" }}>Root Cause Analysis Results</h1>
+      {results.rag1.map((item, i) => {
+        const rag2Item = results.rag2[i];
+        return (
+          <div key={i} style={{ border: "1px solid #ddd", borderRadius: "8px", marginBottom: "24px", padding: "16px" }}>
+            <div style={{ fontWeight: "bold", marginBottom: "12px", fontSize: "1.1rem" }}>
+              Query {i + 1}: {item.query}
+            </div>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+              {[["RAG1", item], ["RAG2", rag2Item]].map(([label, r]) => r && (
+                <div key={label} style={{ flex: 1, minWidth: "280px", background: "#fafbfc", border: "1px solid #eee", borderRadius: "6px", padding: "12px" }}>
+                  <div style={{ fontWeight: "bold", color: "#800000", marginBottom: "8px" }}>{label}</div>
+                  <div><strong>New Retrieval Score:</strong> {r.new_retrieval_quality_score}</div>
+                  <div><strong>New Answer Score:</strong> {r.new_answer_quality_score}</div>
+                  <div><strong>Query Quality:</strong> {r.query_quality}</div>
+                  {r.re_eval_needed?.length > 0 && (
+                    <div style={{ color: "#e74c3c", marginTop: "4px" }}>⚠ Re-evaluation needed</div>
+                  )}
+                  {r.root_cause_analysis?.length > 0 && (
+                    <div style={{ marginTop: "8px" }}>
+                      <strong>Root Causes:</strong>
+                      {r.root_cause_analysis.map((rca, j) => (
+                        <div key={j} style={{ marginTop: "4px", padding: "6px", background: "#fff3cd", borderRadius: "4px" }}>
+                          {Object.entries(rca).map(([k, v]) => (
+                            <div key={k}>
+                              <em style={{ color: "#800000" }}>{k}:</em>{" "}
+                              {Array.isArray(v) ? v.join("; ") : v}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function App() {
+  const params = new URLSearchParams(window.location.search);
+  const isRCAView = params.get('view') === 'rca';
+  if (isRCAView) {
+    const stored = localStorage.getItem('rcaResults');
+    const results = stored ? JSON.parse(stored) : null;
+    return <RCAResultsPage results={results} />;
+  }
   const [rag1Model, setRag1Model] = useState(embeddingModels[0].value);
   const [rag2Model, setRag2Model] = useState(embeddingModels[0].value);
   const [selectedDataset, setSelectedDataset] = useState("");
@@ -232,6 +290,7 @@ function App() {
   const [rcaResults, setRcaResults] = useState(null);
   const [rcaJobId, setRcaJobId] = useState(null);
   const rcaPollRef = useRef(null);
+  const rcaTabRef = useRef(null);
 
   const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
 
@@ -242,9 +301,12 @@ function App() {
         const res = await fetch(`https://${BACKEND_URL}/rca-status/${rcaJobId}`);
         const data = await res.json();
         if (data.status === "done") {
-          setRcaResults({ rag1: data.rag1, rag2: data.rag2 });
+          const results = { rag1: data.rag1, rag2: data.rag2 };
+          localStorage.setItem('rcaResults', JSON.stringify(results));
+          setRcaResults(results);
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
+          if (rcaTabRef.current) rcaTabRef.current.location.reload();
         } else if (data.status === "error") {
           setRcaStatus("error");
           clearInterval(rcaPollRef.current);
@@ -258,6 +320,7 @@ function App() {
 
   const handleRunRCA = async () => {
     setRcaStatus("running");
+    rcaTabRef.current = window.open(`${window.location.pathname}?view=rca`, '_blank');
     try {
       const res = await fetch(`https://${BACKEND_URL}/run-rca/${jobId}`, { method: "POST" });
       const data = await res.json();
@@ -556,8 +619,7 @@ function App() {
                     onClick={handleRunRCA}
                     disabled={rcaStatus === "running"}
                   >
-                    {rcaStatus === "running" ? "Running Root Cause Analysis..." : "Run Root Cause Analysis"}
-                    🔍 Root Cause Analysis
+                    {rcaStatus === "running" ? "Running now..." : "🔍 Root Cause Analysis"}
                   </button>
                 </>
                )}
@@ -577,61 +639,6 @@ function App() {
         onAGLLMChange={setRag2AGLLM}
         style={{ flex: 1 }}
       />
-      {rcaStatus === "done" && rcaResults && (
-        <div style={{
-          position: "fixed", top: 0, left: 0,
-          width: "100vw", height: "100vh",
-          background: "#fff", zIndex: 1000,
-          overflowY: "auto", padding: "32px",
-          boxSizing: "border-box", fontFamily: "Calibri, sans-serif",
-        }}>
-          <button
-            onClick={() => { setRcaStatus("idle"); setRcaResults(null); setRcaJobId(null); }}
-            style={{ marginBottom: "20px", padding: "8px 20px", fontSize: "1rem", cursor: "pointer" }}
-          >
-            ← Back
-          </button>
-          <h1 style={{ color: "#800000", marginBottom: "24px" }}>Root Cause Analysis Results</h1>
-          {rcaResults.rag1.map((item, i) => {
-            const rag2Item = rcaResults.rag2[i];
-            return (
-              <div key={i} style={{ border: "1px solid #ddd", borderRadius: "8px", marginBottom: "24px", padding: "16px" }}>
-                <div style={{ fontWeight: "bold", marginBottom: "12px", fontSize: "1.1rem" }}>
-                  Query {i + 1}: {item.query}
-                </div>
-                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                  {[["RAG1", item], ["RAG2", rag2Item]].map(([label, r]) => r && (
-                    <div key={label} style={{ flex: 1, minWidth: "280px", background: "#fafbfc", border: "1px solid #eee", borderRadius: "6px", padding: "12px" }}>
-                      <div style={{ fontWeight: "bold", color: "#800000", marginBottom: "8px" }}>{label}</div>
-                      <div><strong>New Retrieval Score:</strong> {r.new_retrieval_quality_score}</div>
-                      <div><strong>New Answer Score:</strong> {r.new_answer_quality_score}</div>
-                      <div><strong>Query Quality:</strong> {r.query_quality}</div>
-                      {r.re_eval_needed?.length > 0 && (
-                        <div style={{ color: "#e74c3c", marginTop: "4px" }}>⚠ Re-evaluation needed</div>
-                      )}
-                      {r.root_cause_analysis?.length > 0 && (
-                        <div style={{ marginTop: "8px" }}>
-                          <strong>Root Causes:</strong>
-                          {r.root_cause_analysis.map((rca, j) => (
-                            <div key={j} style={{ marginTop: "4px", padding: "6px", background: "#fff3cd", borderRadius: "4px" }}>
-                              {Object.entries(rca).map(([k, v]) => (
-                                <div key={k}>
-                                  <em style={{ color: "#800000" }}>{k}:</em>{" "}
-                                  {Array.isArray(v) ? v.join("; ") : v}
-                                </div>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
      </div>
    );
 }
