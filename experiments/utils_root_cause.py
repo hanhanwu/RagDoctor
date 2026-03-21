@@ -24,6 +24,12 @@ FINANCIAL ACCURACY IS CRITICAL. When in doubt, cite your source and indicate unc
 """
 
 
+def json_default(obj):
+    if isinstance(obj, set):
+        return list(obj)
+    raise TypeError(f'Object of type {obj.__class__.__name__} is not JSON serializable')
+
+
 def upload_to_google_drive(df, folder_id, output_filename):
     SCOPES = ['https://www.googleapis.com/auth/drive.file']
     TOKEN_FILE = r'C:\Users\wuhan\.gcp\token.pickle'
@@ -442,7 +448,7 @@ class RAGSystemReview(BaseModel):
     improvement_suggestions: str = Field(description="Provide suggestions to improve the RAG performance.")
 
 
-def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, aq_reasons,
+async def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, aq_reasons,
                                 system_prompt, rag_config):
     base_parser = PydanticOutputParser(pydantic_object=RAGSystemReview)
     output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
@@ -453,7 +459,7 @@ def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, aq_reas
         partial_variables={"format_instructions": output_parser.get_format_instructions()},
     )
     chain = prompt | llm | output_parser
-    result = chain.invoke({
+    result = await _invoke_with_retry(chain, {
         "avg_rq_score": avg_rq_score, "rq_reasons": rq_reasons,
         "avg_aq_score": avg_aq_score, "aq_reasons": aq_reasons,
         "system_prompt": system_prompt, "rag_config": rag_config
