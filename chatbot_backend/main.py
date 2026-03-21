@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import make_url
 
-from .utils import run_all_in_processes, run_auto_eval
+from .utils import run_all_in_processes, run_auto_eval, run_rca
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,6 +49,7 @@ rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
 _job_queue: asyncio.Queue = asyncio.Queue()
 _job_results: dict = {}   # job_id -> result dict
 _queue_order: list = []   # job_ids waiting, in order
+_rca_results: dict = {}   # rca_job_id -> result dict
 
 DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
 DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
@@ -137,6 +138,7 @@ async def process_job_queue():
             eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
             _job_results[job_id] = {
                 "status": "done",
+                "config_hashes": config_hashes,
                 "rag1": eval_results.get(config_hashes[0], {}),
                 "rag2": eval_results.get(config_hashes[1], {}),
             }
@@ -173,3 +175,33 @@ async def get_job_status(job_id: str):
         is_running = any(v["status"] == "running" for v in _job_results.values())
         result["position"] = _queue_order.index(job_id) + (1 if is_running else 0)
     return result
+
+
+async def _run_rca_task(rca_job_id: str, config_hash_1: str, config_hash_2: str):
+    try:
+        result = await run_rca(config_hash_1, config_hash_2, db_url)
+        _rca_results[rca_job_id] = {"status": "done", **result}
+    except Exception as e:
+        traceback.print_exc()
+        _rca_results[rca_job_id] = {"status": "error", "message": str(e)}
+
+
+@app.post("/run-rca/{job_id}")
+async def run_rca_endpoint(job_id: str, background_tasks: BackgroundTasks):
+    job = _job_results.get(job_id)
+    if not job or job.get("status") != "done":
+        return {"status": "error", "message": "RAG job not done or not found"}
+    config_hashes = job.get("config_hashes")
+    if not config_hashes or len(config_hashes) < 2:
+        return {"status": "error", "message": "Config hashes not found in job"}
+    rca_job_id = str(uuid.uuid4())
+    _rca_results[rca_job_id] = {"status": "running"}
+    background_tasks.add_task(_run_rca_task, rca_job_id, config_hashes[0], config_hashes[1])
+    return {"status": "running", "rca_job_id": rca_job_id}
+
+
+@app.get("/rca-status/{rca_job_id}")
+async def get_rca_status(rca_job_id: str):
+    if rca_job_id not in _rca_results:
+        return {"status": "not_found"}
+    return _rca_results[rca_job_id]

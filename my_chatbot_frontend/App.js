@@ -228,8 +228,44 @@ function App() {
   const [jobId, setJobId] = useState(null);
   const [queuePosition, setQueuePosition] = useState(null);
   const pollRef = useRef(null);
+  const [rcaStatus, setRcaStatus] = useState("idle"); // "idle" | "running" | "done" | "error"
+  const [rcaResults, setRcaResults] = useState(null);
+  const [rcaJobId, setRcaJobId] = useState(null);
+  const rcaPollRef = useRef(null);
 
   const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
+
+  useEffect(() => {
+    if (!rcaJobId) return;
+    rcaPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`https://${BACKEND_URL}/rca-status/${rcaJobId}`);
+        const data = await res.json();
+        if (data.status === "done") {
+          setRcaResults({ rag1: data.rag1, rag2: data.rag2 });
+          setRcaStatus("done");
+          clearInterval(rcaPollRef.current);
+        } else if (data.status === "error") {
+          setRcaStatus("error");
+          clearInterval(rcaPollRef.current);
+        }
+      } catch {
+        clearInterval(rcaPollRef.current);
+      }
+    }, 5000);
+    return () => clearInterval(rcaPollRef.current);
+  }, [rcaJobId]);
+
+  const handleRunRCA = async () => {
+    setRcaStatus("running");
+    try {
+      const res = await fetch(`https://${BACKEND_URL}/run-rca/${jobId}`, { method: "POST" });
+      const data = await res.json();
+      setRcaJobId(data.rca_job_id);
+    } catch {
+      setRcaStatus("error");
+    }
+  };
 
   useEffect(() => {
      if (!jobId) return;
@@ -504,6 +540,25 @@ function App() {
                      scoreDefinitions={ANSWER_SCORE_DEFS}
                    />
                  </div>
+                 <button
+                    style={{
+                      marginTop: "66px",
+                      background: "#000",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "12px 24px",
+                      fontSize: "1rem",
+                      fontWeight: "bold",
+                      cursor: rcaStatus === "running" ? "not-allowed" : "pointer",
+                      opacity: rcaStatus === "running" ? 0.7 : 1,
+                    }}
+                    onClick={handleRunRCA}
+                    disabled={rcaStatus === "running"}
+                  >
+                    {rcaStatus === "running" ? "Running Root Cause Analysis..." : "Run Root Cause Analysis"}
+                    🔍 Root Cause Analysis
+                  </button>
                 </>
                )}
              </>
@@ -522,8 +577,63 @@ function App() {
         onAGLLMChange={setRag2AGLLM}
         style={{ flex: 1 }}
       />
-    </div>
-  );
+      {rcaStatus === "done" && rcaResults && (
+        <div style={{
+          position: "fixed", top: 0, left: 0,
+          width: "100vw", height: "100vh",
+          background: "#fff", zIndex: 1000,
+          overflowY: "auto", padding: "32px",
+          boxSizing: "border-box", fontFamily: "Calibri, sans-serif",
+        }}>
+          <button
+            onClick={() => { setRcaStatus("idle"); setRcaResults(null); setRcaJobId(null); }}
+            style={{ marginBottom: "20px", padding: "8px 20px", fontSize: "1rem", cursor: "pointer" }}
+          >
+            ← Back
+          </button>
+          <h1 style={{ color: "#800000", marginBottom: "24px" }}>Root Cause Analysis Results</h1>
+          {rcaResults.rag1.map((item, i) => {
+            const rag2Item = rcaResults.rag2[i];
+            return (
+              <div key={i} style={{ border: "1px solid #ddd", borderRadius: "8px", marginBottom: "24px", padding: "16px" }}>
+                <div style={{ fontWeight: "bold", marginBottom: "12px", fontSize: "1.1rem" }}>
+                  Query {i + 1}: {item.query}
+                </div>
+                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                  {[["RAG1", item], ["RAG2", rag2Item]].map(([label, r]) => r && (
+                    <div key={label} style={{ flex: 1, minWidth: "280px", background: "#fafbfc", border: "1px solid #eee", borderRadius: "6px", padding: "12px" }}>
+                      <div style={{ fontWeight: "bold", color: "#800000", marginBottom: "8px" }}>{label}</div>
+                      <div><strong>New Retrieval Score:</strong> {r.new_retrieval_quality_score}</div>
+                      <div><strong>New Answer Score:</strong> {r.new_answer_quality_score}</div>
+                      <div><strong>Query Quality:</strong> {r.query_quality}</div>
+                      {r.re_eval_needed?.length > 0 && (
+                        <div style={{ color: "#e74c3c", marginTop: "4px" }}>⚠ Re-evaluation needed</div>
+                      )}
+                      {r.root_cause_analysis?.length > 0 && (
+                        <div style={{ marginTop: "8px" }}>
+                          <strong>Root Causes:</strong>
+                          {r.root_cause_analysis.map((rca, j) => (
+                            <div key={j} style={{ marginTop: "4px", padding: "6px", background: "#fff3cd", borderRadius: "4px" }}>
+                              {Object.entries(rca).map(([k, v]) => (
+                                <div key={k}>
+                                  <em style={{ color: "#800000" }}>{k}:</em>{" "}
+                                  {Array.isArray(v) ? v.join("; ") : v}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+     </div>
+   );
 }
 
 export default App;
