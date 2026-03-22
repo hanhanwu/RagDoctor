@@ -212,12 +212,14 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
 
 function RCAResultsPage({ results }) {
   if (!results) return (
-    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.8rem" }}>
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.8rem",
+      height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
       ⏳ Analysis is running... this page will update automatically when done.
     </div>
   );
   return (
-    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif" }}>
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
+      height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
       <h1 style={{ color: "#800000", marginBottom: "24px" }}>Root Cause Analysis Results</h1>
       {results.rag1.map((item, i) => {
         const rag2Item = results.rag2[i];
