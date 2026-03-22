@@ -321,7 +321,7 @@ def get_eval_input(db_url, config_hash):
     return pd.DataFrame(records)
 
 
-async def eval_one_config(config_hash, db_url, rag_df, cfg):
+async def eval_one_config(config_hash, db_url, rag_df):
     conn = psycopg2.connect(
         host=db_url.host,
         port=db_url.port,
@@ -337,18 +337,8 @@ async def eval_one_config(config_hash, db_url, rag_df, cfg):
         row = cur.fetchone()
         cur.close()
         conn.close()
-        rq_df = pd.DataFrame(row[0])
-        aq_df = pd.DataFrame(row[1])
-        full_df = rq_df.copy()
-        full_df['answer_quality_score'] = aq_df['answer_quality_score'].values
-        full_df['aq_reasoning'] = aq_df['aq_reasoning'].values
-        full_df['embedding_model'] = cfg.embedding_model
-        full_df['top_n_retrieval'] = cfg.top_n
-        full_df['semantic_weight'] = cfg.semantic_weight
-        full_df['answer_gen_llm'] = cfg.answer_gen_llm
-        rq_counts = {str(k): v for k, v in rq_df['retrieval_quality_score'].value_counts().to_dict().items()}
-        aq_counts = {str(k): v for k, v in aq_df['answer_quality_score'].value_counts().to_dict().items()}
-        return config_hash, rq_counts, aq_counts, full_df
+    rq_counts = {str(k): v for k, v in pd.DataFrame(row[0])['retrieval_quality_score'].value_counts().to_dict().items()}
+    aq_counts = {str(k): v for k, v in pd.DataFrame(row[1])['answer_quality_score'].value_counts().to_dict().items()}
     
     input_df = get_eval_input(db_url, config_hash)
     input_df = pd.merge(input_df, rag_df[['question', 'context']], 
@@ -378,32 +368,23 @@ async def eval_one_config(config_hash, db_url, rag_df, cfg):
     cur.close()
     conn.close()
 
-    full_df = retrieval_quality.copy()
-    full_df['answer_quality_score'] = answer_quality['answer_quality_score'].values
-    full_df['aq_reasoning'] = answer_quality['aq_reasoning'].values
-    full_df['embedding_model'] = cfg.embedding_model
-    full_df['top_n_retrieval'] = cfg.top_n
-    full_df['semantic_weight'] = cfg.semantic_weight
-    full_df['answer_gen_llm'] = cfg.answer_gen_llm
-
     rq_counts = {str(k): v for k, v in retrieval_quality\
                  ['retrieval_quality_score'].value_counts().to_dict().items()}
     aq_counts = {str(k): v for k, v in answer_quality\
                  ['answer_quality_score'].value_counts().to_dict().items()}
-    return config_hash, rq_counts, aq_counts, full_df
+    return config_hash, rq_counts, aq_counts
 
 
-async def run_auto_eval(config_hashes, db_url, rag_df, cfgs):
+async def run_auto_eval(config_hashes, db_url, rag_df):
     results = await asyncio.gather(*[
-        eval_one_config(config_hash, db_url, rag_df, cfg)
-        for config_hash, cfg in zip(config_hashes, cfgs)
+        eval_one_config(config_hash, db_url, rag_df)
+        for config_hash in config_hashes
     ])
 
     return {
-        config_hash: {"retrieval_quality_counts": rq_counts, 
-                      "answer_quality_counts": aq_counts,
-                        "eval_df": full_df}
-        for config_hash, rq_counts, aq_counts, full_df in results
+        config_hash: {"retrieval_quality_counts": rq_counts,
+                        "answer_quality_counts": aq_counts}
+         for config_hash, rq_counts, aq_counts in results
      }
 
 
@@ -539,56 +520,12 @@ rca_llm = ChatGroq(
     model_name="openai/gpt-oss-20b", 
     temperature=0.78
 )
+rca_llm_sem = asyncio.Semaphore(4)
 
 
 def contains_conflict(text: str) -> bool:
     pattern = r'\b(conflict\w*|contradict\w*)\b'
     return re.search(pattern, text, re.IGNORECASE) is not None
-
-
-def get_auto_eval_output(db_url):
-    conn = psycopg2.connect(
-        host=db_url.host,
-        port=db_url.port,
-        dbname=db_url.database,
-        user=db_url.username,
-        password=db_url.password,
-    )
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT
-            t1.config_hash,
-            t1.dataset,
-            t1.embedding_model,
-            t1.top_n_retrieval,
-            t1.semantic_weight,
-            t1.answer_gen_llm,
-            rq.value->>'query' AS query,
-            rq.value->>'context' AS context,
-            rq.value->>'retrieved_content' AS retrieved_content,
-            rq.value->>'same_context' AS same_context,
-            rq.value->>'retrieval_quality_score' AS retrieval_quality_score,
-            rq.value->>'rq_reasoning' AS rq_reasoning,
-            aq.value->>'referenced_answer' AS referenced_answer,
-            aq.value->>'ai_answer' AS ai_answer,
-            aq.value->>'answer_quality_score' AS answer_quality_score,
-            aq.value->>'aq_reasoning' AS aq_reasoning
-        FROM existing_rag_output AS t1
-        JOIN existing_auto_eval_output AS t2
-            ON t1.config_hash = t2.config_hash,
-        jsonb_array_elements(t2.retrieval_quality) WITH ORDINALITY AS rq(value, idx),
-        jsonb_array_elements(t2.answer_quality) WITH ORDINALITY AS aq(value, idx)
-        WHERE rq.idx = aq.idx
-    """)
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    col_names = [desc[0] for desc in cur.description]
-    df = pd.DataFrame(rows, columns=col_names)
-
-    return df
 
 
 # ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #
@@ -704,185 +641,75 @@ async def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, a
 # ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
 
 
-class RCAState(TypedDict):
-    r_idx: int
-    query: str
-    referenced_content: str
-    retrieved_content: str
-    retrieval_quality_score: int
-    rq_reasoning: str
+async def run_rca(record):
+    query = record['query']
 
-    embedding_model: str
-    top_n_retrieval: int
-    semantic_weight: float
-    answer_gen_llm: str
-
-    referenced_answer: str
-    ai_answer: str
-    answer_quality_score: int
-    aq_reasoning: str
-
-    new_retrieval_quality_score: int   
-    new_answer_quality_score: int
-    query_quality: str     
-    root_cause_analysis: list[dict[str, str]]  # dict key is root cause, value is improvement suggestions
-    re_eval_lst: set[int]  # store the index of records that should be re-evaluated after updates
-
-    referenced_answer_context_alignment: Optional[int]  # indicate whether referenced answer has critical info alignede with the referenced content
-    referenced_answer_context_alignment_reason: Optional[str]
-    ai_answer_context_alignment: Optional[int]  # indicate whether AI answer has critical info alignede with the referenced content
-    ai_answer_context_alignment_reason: Optional[str]
-
-
-# =========================
-# AI-as-Judge Reviewer
-# =========================
-async def review_evaluation_output(state: RCAState):
-    rq_score_after_review = await review_sr_async(rca_llm, state['rq_reasoning'])
-    aq_score_after_review = await review_sr_async(rca_llm, state['aq_reasoning'])
+    async with rca_llm_sem:
+        rq_score_after_review, aq_score_after_review, query_quality = await asyncio.gather(
+            review_sr_async(rca_llm, record['rq_reasoning']),
+            review_sr_async(rca_llm, record['aq_reasoning']),
+            review_query_quality_async(rca_llm, query)
+        )
 
     root_cause_analysis = []
-    if rq_score_after_review != state['retrieval_quality_score']:
+
+    # ------------- Review AI-as-Judge ------------- #
+    if rq_score_after_review != record['retrieval_quality_score']:
         root_cause_analysis.append({'auto eval score issue': f'score vs reasoning mismatch, \
-                                    changed retrieval_quality_score from {state["retrieval_quality_score"]} to {rq_score_after_review}'})
-    if aq_score_after_review != state['answer_quality_score']:
+                                    changed retrieval_quality_score from {record["retrieval_quality_score"]} to {rq_score_after_review}'})
+    if aq_score_after_review != record['answer_quality_score']:
         root_cause_analysis.append({'auto eval score issue': f'score vs reasoning mismatch, \
-                                    changed answer_quality_score from {state["answer_quality_score"]} to {aq_score_after_review}'})
+                                    changed answer_quality_score from {record["answer_quality_score"]} to {aq_score_after_review}'})
 
-    return {
-        "new_retrieval_quality_score": rq_score_after_review,
-        "new_answer_quality_score": aq_score_after_review,
-        "root_cause_analysis": root_cause_analysis
-    }
+    record['new_retrieval_quality_score'] = rq_score_after_review
+    record['new_answer_quality_score'] = aq_score_after_review
 
+    # # ------------- Review References ------------- #
+    # needs_re_eval = 0
+    # rc_alignment_score, rc_alignment_reason = None, None
+    # ac_alignment_score, ac_alignment_reason = None, None
 
-# =========================
-# Reference Reviewer
-# =========================
-async def review_referenced_data(state: RCAState):
-    rq_score = state['new_retrieval_quality_score']
-    aq_score = state['new_answer_quality_score']
-    root_cause_analysis = state['root_cause_analysis']
-    re_eval_lst = set()
+    # if rq_score_after_review == -1:
+    #     root_cause_analysis.append({'Please review referenced content':
+    #                                         'referenced content is much less relevant to the query than retrieved content'})
+    #     needs_re_eval = 1
+    # if aq_score_after_review == -1:
+    #     root_cause_analysis.append({"Please review referenced answer":
+    #                                         "referenced answer is much less relevant to the query than AI's answer"})
+    #     needs_re_eval = 1
 
-    rc_alignment_score, rc_alignment_reason = None, None
-    ac_alignment_score, ac_alignment_reason = None, None
-
-    if rq_score == -1:
-        root_cause_analysis.append({'Please review referenced content':
-                                            'referenced content is much less relevant to the query than retrieved content'})
-        re_eval_lst.add(state['r_idx'])
-    if aq_score == -1:
-        root_cause_analysis.append({"Please review referenced answer":
-                                            "referenced answer is much less relevant to the query than AI's answer"})
-        re_eval_lst.add(state['r_idx'])
-
-    if rq_score >= 2 and aq_score in [0, 1]:  # good retrieval, bad answer
-        referenced_answer_context_alignment = await review_ta_async(rca_llm,state['query'],
-                                                                    state['referenced_answer'], state['referenced_content'])
-        rc_alignment_score = referenced_answer_context_alignment.score
-        rc_alignment_reason = referenced_answer_context_alignment.reasoning
-        if rc_alignment_score == 0:
-            root_cause_analysis.append({'Please review referenced answer':
-                                        'referenced answer has critical information misaligned with the referenced content'})
-            re_eval_lst.add(state['r_idx'])
+    # if rq_score_after_review >= 2 and aq_score_after_review in [0, 1]:  # good retrieval, bad answer
+    #     referenced_answer_context_alignment = await review_ta_async(rca_llm, query,
+    #                                                                 record['referenced_answer'], record['context'])
+    #     rc_alignment_score = referenced_answer_context_alignment.score
+    #     rc_alignment_reason = referenced_answer_context_alignment.reasoning
+    #     if rc_alignment_score == 0:
+    #         root_cause_analysis.append({'Please review referenced answer':
+    #                                     'referenced answer has critical information misaligned with the referenced content'})
+    #         needs_re_eval = 1
             
-    if rq_score in [0, 1] and aq_score >= 2:  # good answer, bad retrieval
-        ai_answer_context_alignment = await review_ta_async(rca_llm,state['query'],
-                                                                    state['ai_answer'], state['referenced_content'])
-        ac_alignment_score = ai_answer_context_alignment.score
-        ac_alignment_reason = ai_answer_context_alignment.reasoning
-        if ac_alignment_score == 0:
-            root_cause_analysis.append({"Please review referenced content':\
-                                        AI's answer got a high score but retrieval score is low, \
-                                        please check whether need to add or merge retrieved content into the referenced content."})
-            re_eval_lst.add(state['r_idx'])
+    # if rq_score_after_review in [0, 1] and aq_score_after_review >= 2:  # good answer, bad retrieval
+    #     ai_answer_context_alignment = await review_ta_async(rca_llm, query,
+    #                                                                 record['ai_answer'], record['context'])
+    #     ac_alignment_score = ai_answer_context_alignment.score
+    #     ac_alignment_reason = ai_answer_context_alignment.reasoning
+    #     if ac_alignment_score == 0:
+    #         root_cause_analysis.append({"Please review referenced content":
+    #                                     "AI's answer got a high score but retrieval score is low, \
+    #                                     please check whether need to add or merge retrieved content into the referenced content."})
+    #         needs_re_eval = 1
+    
+    # record['needs_re_eval'] = needs_re_eval
+    # record['referenced_answer_context_alignment'] = rc_alignment_score
+    # record['referenced_answer_context_alignment_reason'] = rc_alignment_reason
+    # record['ai_answer_context_alignment'] = ac_alignment_score
+    # record['ai_answer_context_alignment_reason'] = ac_alignment_reason
 
-    return {
-        "referenced_answer_context_alignment": rc_alignment_score,
-        "referenced_answer_context_alignment_reason": rc_alignment_reason,
-        "ai_answer_context_alignment": ac_alignment_score,
-        "ai_answer_context_alignment_reason": ac_alignment_reason,
-        "root_cause_analysis": root_cause_analysis,
-        "re_eval_lst": re_eval_lst
-    }
+    # # ------------- Review Query Quality ------------- #
+    # if query_quality == 'ambiguous':
+    #     query_variants = await expand_query_async(rca_llm, query)
+    #     root_cause_analysis.append({'Please review query quality': query_variants})
 
-
-# =========================
-# Query Quality Reviewer
-# =========================
-async def review_query_quality(state: RCAState):
-    query_quality = await review_query_quality_async(rca_llm, state['query'])
-    root_cause_analysis = state['root_cause_analysis']
-
-    if query_quality == 'ambiguous':
-        query_variants = await expand_query_async(rca_llm, state['query'])
-        root_cause_analysis.append({'Please review query quality': query_variants})
-
-    return {
-        "query_quality": query_quality,
-        "root_cause_analysis": root_cause_analysis
-    }
-
-
-workflow = StateGraph(RCAState)
-
-workflow.add_node("Evaluation Reviewer", review_evaluation_output)
-workflow.add_node("Reference Reviewer", review_referenced_data)
-workflow.add_node("Query Quality Reviewer", review_query_quality)
-
-workflow.add_edge(START, "Evaluation Reviewer")
-workflow.add_edge("Evaluation Reviewer", "Reference Reviewer")
-workflow.add_edge("Reference Reviewer", "Query Quality Reviewer")
-workflow.add_edge("Query Quality Reviewer", END)
-
-graph = workflow.compile()
-
-async def run_rca_on_all(df, max_concurrent=2):
-    sem = asyncio.Semaphore(max_concurrent)
-    async def throttled_invoke(state):
-        async with sem:
-            return await graph.ainvoke(state)
-
-    states = [
-        {
-            "r_idx": idx,
-            "query": row["query"],
-            "referenced_content": row["context"],
-            "retrieved_content": row["retrieved_content"],
-            "retrieval_quality_score": int(row["retrieval_quality_score"]),
-            "rq_reasoning": row["rq_reasoning"],
-            "referenced_answer": row["referenced_answer"],
-            "ai_answer": row["ai_answer"],
-            "answer_quality_score": int(row["answer_quality_score"]),
-            "aq_reasoning": row["aq_reasoning"],
-            "embedding_model": row["embedding_model"],
-            "top_n_retrieval": row["top_n_retrieval"],
-            "semantic_weight": row["semantic_weight"],
-            "answer_gen_llm": row["answer_gen_llm"]
-        }
-        for idx, row in df.iterrows()
-    ]
-    return await asyncio.gather(*[throttled_invoke(s) for s in states])
-
-
-async def run_rca(df1: pd.DataFrame, df2: pd.DataFrame) -> dict:
-    rca1_states, rca2_states = await asyncio.gather(
-        run_rca_on_all(df1),
-        run_rca_on_all(df2),
-    )
-
-    def serialize_state(s: dict) -> dict:
-        return {
-            "query": s.get("query"),
-            "new_retrieval_quality_score": s.get("new_retrieval_quality_score"),
-            "new_answer_quality_score": s.get("new_answer_quality_score"),
-            "query_quality": s.get("query_quality"),
-            "root_cause_analysis": s.get("root_cause_analysis", []),
-            "re_eval_needed": sorted(s.get("re_eval_lst") or []),
-        }
-
-    return {
-        "rag1": [serialize_state(s) for s in rca1_states],
-        "rag2": [serialize_state(s) for s in rca2_states],
-    }
+    # record['query_quality'] = query_quality
+    # record['root_cause_analysis'] = root_cause_analysis
+    return record

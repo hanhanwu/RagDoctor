@@ -212,7 +212,7 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
 
 function RCAResultsPage({ results }) {
   if (!results) return (
-    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.2rem" }}>
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.8rem" }}>
       ⏳ Analysis is running... this page will update automatically when done.
     </div>
   );
@@ -301,7 +301,7 @@ function App() {
         const res = await fetch(`https://${BACKEND_URL}/rca-status/${rcaJobId}`);
         const data = await res.json();
         if (data.status === "done") {
-          const results = { rag1: data.rag1, rag2: data.rag2 };
+          const results = { rag1: data.rca_records_1, rag2: data.rca_records_2 };
           localStorage.setItem('rcaResults', JSON.stringify(results));
           setRcaResults(results);
           setRcaStatus("done");

@@ -135,14 +135,14 @@ async def process_job_queue():
             config_hashes = await run_all_in_processes(
                 cfgs, rag_data['rag_lst'], rag_data['documents'], db_url, request.dataset
             )
-            eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'], cfgs)
+            eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
             _job_results[job_id] = {
                 "status": "done",
                 "config_hashes": config_hashes,
                 "rag1": eval_results.get(config_hashes[0], {}),
                 "rag2": eval_results.get(config_hashes[1], {}),
-                "eval_df_1": eval_results.get(config_hashes[0], {}).get("eval_df"),
-                "eval_df_2": eval_results.get(config_hashes[1], {}).get("eval_df"),
+                "eval_records_1": eval_results.get(config_hashes[0], {}).get("eval_records", []),
+                "eval_records_2": eval_results.get(config_hashes[1], {}).get("eval_records", []),
             }
         except Exception as e:
             traceback.print_exc()
@@ -182,9 +182,15 @@ async def get_job_status(job_id: str):
 async def _run_rca_task(rca_job_id: str, job_id: str):
     try:
         job = _job_results[job_id]
-        # result = await run_rca(job["eval_df_1"], job["eval_df_2"])
-        result = await run_rca(job["eval_df_1"].head(5), job["eval_df_2"].head(5))  # TEST ONLY
-        _rca_results[rca_job_id] = {"status": "done", **result}
+        # records_1 = job["eval_records_1"]
+        # records_2 = job["eval_records_2"]
+        records_1 = job["eval_records_1"][:2]  # TEST ONLY
+        records_2 = job["eval_records_2"][:2]  # TEST ONLY
+        rca_1, rca_2 = await asyncio.gather(
+            asyncio.gather(*[run_rca(r) for r in records_1]),
+            asyncio.gather(*[run_rca(r) for r in records_2]),
+        )
+        _rca_results[rca_job_id] = {"status": "done", "rca_records_1": rca_1, "rca_records_2": rca_2}
     except Exception as e:
         traceback.print_exc()
         _rca_results[rca_job_id] = {"status": "error", "message": str(e)}
