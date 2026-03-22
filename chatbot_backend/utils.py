@@ -337,8 +337,12 @@ async def eval_one_config(config_hash, db_url, rag_df):
         row = cur.fetchone()
         cur.close()
         conn.close()
-    rq_counts = {str(k): v for k, v in pd.DataFrame(row[0])['retrieval_quality_score'].value_counts().to_dict().items()}
-    aq_counts = {str(k): v for k, v in pd.DataFrame(row[1])['answer_quality_score'].value_counts().to_dict().items()}
+        rq_df = pd.DataFrame(row[0])
+        aq_df = pd.DataFrame(row[1])
+        eval_df = rq_df.merge(aq_df[['query', 'answer_quality_score', 'aq_reasoning']], on='query')
+        rq_counts = {str(k): v for k, v in rq_df['retrieval_quality_score'].value_counts().to_dict().items()}
+        aq_counts = {str(k): v for k, v in aq_df['answer_quality_score'].value_counts().to_dict().items()}
+        return config_hash, rq_counts, aq_counts, eval_df
     
     input_df = get_eval_input(db_url, config_hash)
     input_df = pd.merge(input_df, rag_df[['question', 'context']], 
@@ -368,11 +372,14 @@ async def eval_one_config(config_hash, db_url, rag_df):
     cur.close()
     conn.close()
 
-    rq_counts = {str(k): v for k, v in retrieval_quality\
-                 ['retrieval_quality_score'].value_counts().to_dict().items()}
-    aq_counts = {str(k): v for k, v in answer_quality\
-                 ['answer_quality_score'].value_counts().to_dict().items()}
-    return config_hash, rq_counts, aq_counts
+    eval_df = retrieval_quality.merge(
+        answer_quality[['query', 'answer_quality_score', 'aq_reasoning']],
+        on='query'
+    )
+    rq_counts = {str(k): v for k, v in retrieval_quality['retrieval_quality_score'].value_counts().to_dict().items()}
+    aq_counts = {str(k): v for k, v in answer_quality['answer_quality_score'].value_counts().to_dict().items()}
+    return config_hash, rq_counts, aq_counts, eval_df
+    
 
 
 async def run_auto_eval(config_hashes, db_url, rag_df):
@@ -383,9 +390,10 @@ async def run_auto_eval(config_hashes, db_url, rag_df):
 
     return {
         config_hash: {"retrieval_quality_counts": rq_counts,
-                        "answer_quality_counts": aq_counts}
-         for config_hash, rq_counts, aq_counts in results
-     }
+                      "answer_quality_counts": aq_counts,
+                      "eval_records": eval_df.to_dict(orient='records')}
+        for config_hash, rq_counts, aq_counts, eval_df in results
+    }
 
 
 # ------------------------------------------ RETRIEVAL QUALITY ------------------------------------------ #
@@ -511,21 +519,12 @@ async def get_answer_quality_output_async(input_df, llm, aq_prompt_template, con
 # ROOT CAUSE ANALYSIS
 # TO-DO: alean up auto_eval_output table after human reviewed root cause analysis
 # ============================================================================
-import re
-from typing import TypedDict, Literal, Optional
-from langgraph.graph import StateGraph, START, END
-
 rca_llm = ChatGroq(
     groq_api_key=os.environ["GROQ_TOKEN"],
     model_name="openai/gpt-oss-20b", 
     temperature=0.78
 )
 rca_llm_sem = asyncio.Semaphore(4)
-
-
-def contains_conflict(text: str) -> bool:
-    pattern = r'\b(conflict\w*|contradict\w*)\b'
-    return re.search(pattern, text, re.IGNORECASE) is not None
 
 
 # ------------------------------------------ SCORE AFTER REVIEW ------------------------------------------ #

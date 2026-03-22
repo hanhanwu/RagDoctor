@@ -172,7 +172,7 @@ async def run_rags(request: DatasetRequest):
 async def get_job_status(job_id: str):
     if job_id not in _job_results:
         return {"status": "not_found"}
-    result = {k: v for k, v in _job_results[job_id].items() if not k.startswith("eval_df")}
+    result = {k: v for k, v in _job_results[job_id].items() if not k.startswith("eval_records")}
     if result["status"] == "queued" and job_id in _queue_order:
         is_running = any(v["status"] == "running" for v in _job_results.values())
         result["position"] = _queue_order.index(job_id) + (1 if is_running else 0)

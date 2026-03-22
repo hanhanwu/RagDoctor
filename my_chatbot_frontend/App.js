@@ -261,14 +261,7 @@ function RCAResultsPage({ results }) {
   );
 }
 
-function App() {
-  const params = new URLSearchParams(window.location.search);
-  const isRCAView = params.get('view') === 'rca';
-  if (isRCAView) {
-    const stored = localStorage.getItem('rcaResults');
-    const results = stored ? JSON.parse(stored) : null;
-    return <RCAResultsPage results={results} />;
-  }
+function AppMain() {
   const [rag1Model, setRag1Model] = useState(embeddingModels[0].value);
   const [rag2Model, setRag2Model] = useState(embeddingModels[0].value);
   const [selectedDataset, setSelectedDataset] = useState("");
@@ -642,5 +635,14 @@ function App() {
      </div>
    );
 }
+
+function App() {
+   const params = new URLSearchParams(window.location.search);
+   if (params.get('view') === 'rca') {
+     const stored = localStorage.getItem('rcaResults');
+     return <RCAResultsPage results={stored ? JSON.parse(stored) : null} />;
+   }
+   return <AppMain />;
+ }
 
 export default App;
