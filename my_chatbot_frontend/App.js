@@ -313,6 +313,7 @@ function AppMain() {
 
   const handleRunRCA = async () => {
     setRcaStatus("running");
+    localStorage.removeItem('rcaResults');
     rcaTabRef.current = window.open(`${window.location.pathname}?view=rca`, '_blank');
     try {
       const res = await fetch(`https://${BACKEND_URL}/run-rca/${jobId}`, { method: "POST" });
