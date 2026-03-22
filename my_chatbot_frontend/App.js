@@ -211,54 +211,150 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
 }
 
 function RCAResultsPage({ results }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
   if (!results) return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.8rem",
       height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
       ⏳ Analysis is running... this page will update automatically when done.
     </div>
   );
+
+  const sharedReEvalRows = results.rag1
+    .map((item, i) => ({ item, rag2Item: results.rag2[i], i }))
+    .filter(({ item, rag2Item }) =>
+      item?.needs_re_eval === 1 && rag2Item?.needs_re_eval === 1
+    );
+
+  function mergeDistinctSuggestions(rca1, rca2) {
+    const seen = new Set();
+    const result = [];
+    for (const obj of [...(rca1 || []), ...(rca2 || [])]) {
+      for (const [k, v] of Object.entries(obj)) {
+        const display = Array.isArray(v) ? v.join("; ") : v;
+        const key = `${k}: ${display}`;
+        if (!seen.has(key)) { seen.add(key); result.push({ k, display }); }
+      }
+    }
+    return result;
+  }
+
   return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
       height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
       <h1 style={{ color: "#800000", marginBottom: "24px" }}>Root Cause Analysis Results</h1>
-      {results.rag1.map((item, i) => {
-        const rag2Item = results.rag2[i];
-        return (
-          <div key={i} style={{ border: "1px solid #ddd", borderRadius: "8px", marginBottom: "24px", padding: "16px" }}>
-            <div style={{ fontWeight: "bold", marginBottom: "12px", fontSize: "1.1rem" }}>
-              Query {i + 1}: {item.query}
-            </div>
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-              {[["RAG1", item], ["RAG2", rag2Item]].map(([label, r]) => r && (
-                <div key={label} style={{ flex: 1, minWidth: "280px", background: "#fafbfc", border: "1px solid #eee", borderRadius: "6px", padding: "12px" }}>
-                  <div style={{ fontWeight: "bold", color: "#800000", marginBottom: "8px" }}>{label}</div>
-                  <div><strong>New Retrieval Score:</strong> {r.new_retrieval_quality_score}</div>
-                  <div><strong>New Answer Score:</strong> {r.new_answer_quality_score}</div>
-                  <div><strong>Query Quality:</strong> {r.query_quality}</div>
-                  {r.re_eval_needed?.length > 0 && (
-                    <div style={{ color: "#e74c3c", marginTop: "4px" }}>⚠ Re-evaluation needed</div>
-                  )}
-                  {r.root_cause_analysis?.length > 0 && (
-                    <div style={{ marginTop: "8px" }}>
-                      <strong>Root Causes:</strong>
-                      {r.root_cause_analysis.map((rca, j) => (
-                        <div key={j} style={{ marginTop: "4px", padding: "6px", background: "#fff3cd", borderRadius: "4px" }}>
-                          {Object.entries(rca).map(([k, v]) => (
-                            <div key={k}>
-                              <em style={{ color: "#800000" }}>{k}:</em>{" "}
-                              {Array.isArray(v) ? v.join("; ") : v}
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+
+      {sharedReEvalRows.length > 0 && (
+        <div style={{ marginBottom: "40px" }}>
+          <h2 style={{ color: "#e74c3c", marginBottom: "16px" }}>⚠ Suggest to re-evaluate records below:</h2>
+          <div style={{ position: "relative" }}>
+            <div style={{
+              overflowX: "auto",
+              overflowY: "hidden",
+              width: "100%",
+              maxHeight: isExpanded ? "none" : "120px",
+            }}>
+            <table style={{ borderCollapse: "collapse", minWidth: "1500px", fontSize: "0.85rem", width: "100%" }}>
+              <thead>
+                <tr style={{ background: "#fdf0f0" }}>
+                  {[
+                    { label: "Row Number",                     minW: "40px"  },
+                    { label: "Query",                          minW: "180px" },
+                    { label: "Context",                        minW: "200px" },
+                    { label: "Retrieved Content",              minW: "200px" },
+                    { label: "Referenced Answer",              minW: "180px" },
+                    { label: "AI's Answer",                    minW: "180px" },
+                    { label: "Retrieval Quality Score\nRAG1 | RAG2", minW: "160px" },
+                    { label: "Answer Quality Score\nRAG1 | RAG2",    minW: "160px" },
+                    { label: "Suggestions",                    minW: "260px" },
+                  ].map(({ label, minW }) => (
+                    <th key={label} style={{
+                      border: "1px solid #ccc", padding: "8px 12px", textAlign: "center",
+                      whiteSpace: "pre-line", color: "#800000", fontWeight: "bold",
+                      minWidth: minW, background: "#fdf0f0",
+                    }}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sharedReEvalRows.map(({ item, rag2Item, i }) => {
+                  const suggestions = mergeDistinctSuggestions(
+                    item.root_cause_analysis, rag2Item.root_cause_analysis
+                  );
+                  const cellStyle = {
+                    border: "1px solid #ccc", padding: "8px 12px",
+                    verticalAlign: "top", wordBreak: "break-word",
+                    background: i % 2 === 0 ? "#fff" : "#fafafa",
+                  };
+                  return (
+                    <tr key={i}>
+                      <td style={cellStyle}>{i + 1}</td>
+                      <td style={cellStyle}>{item.query}</td>
+                      <td style={cellStyle}>{item.context}</td>
+                      <td style={cellStyle}>{item.retrieved_content}</td>
+                      <td style={cellStyle}>{item.referenced_answer ?? item.expected_answer}</td>
+                      <td style={cellStyle}>{item.ai_answer}</td>
+                      <td style={{ ...cellStyle, textAlign: "center" }}>
+                        <span style={{ color: SCORE_COLORS[String(item.new_retrieval_quality_score)] || "#333" }}>
+                          {item.new_retrieval_quality_score}
+                        </span>
+                        {" | "}
+                        <span style={{ color: SCORE_COLORS[String(rag2Item.new_retrieval_quality_score)] || "#333" }}>
+                          {rag2Item.new_retrieval_quality_score}
+                        </span>
+                      </td>
+                      <td style={{ ...cellStyle, textAlign: "center" }}>
+                        <span style={{ color: SCORE_COLORS[String(item.new_answer_quality_score)] || "#333" }}>
+                          {item.new_answer_quality_score}
+                        </span>
+                        {" | "}
+                        <span style={{ color: SCORE_COLORS[String(rag2Item.new_answer_quality_score)] || "#333" }}>
+                          {rag2Item.new_answer_quality_score}
+                        </span>
+                      </td>
+                      <td style={cellStyle}>
+                        {suggestions.map(({ k, display }, j) => (
+                          <div key={j} style={{ marginBottom: "4px" }}>
+                            <em style={{ color: "#800000" }}>{k}:</em> {display}
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        );
-      })}
+            {!isExpanded && (
+              <div style={{
+                position: "absolute",
+                bottom: 0, left: 0, right: 0,
+                height: "48px",
+                background: "linear-gradient(transparent, #fff)",
+                pointerEvents: "none",
+              }} />
+            )}
+          </div>
+          <button
+            onClick={() => setIsExpanded(e => !e)}
+            style={{
+              marginTop: "8px",
+              background: "none",
+              border: "1px solid #ccc",
+              borderRadius: "4px",
+              padding: "4px 16px",
+              cursor: "pointer",
+              fontSize: "0.85rem",
+              color: "#800000",
+              fontWeight: "bold",
+            }}
+          >
+            {isExpanded ? "▲ Collapse" : "▼ Expand table"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
