@@ -128,8 +128,8 @@ const ANSWER_SCORE_DEFS = [
 
 
 function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }) {
-  if (!rag1Counts && !rag2Counts) return null;
   const [showTip, setShowTip] = useState(false);
+  if (!rag1Counts && !rag2Counts) return null;
   const allScores = Array.from(
     new Set([
       ...Object.keys(rag1Counts || {}),
@@ -414,6 +414,7 @@ function AppMain() {
         const data = await res.json();
         if (data.status === "done") {
           const results = { rag1: data.rca_records_1, rag2: data.rca_records_2 };
+          localStorage.removeItem('rcaProgress');
           localStorage.setItem('rcaResults', JSON.stringify(results));
           setRcaResults(results);
           setRcaStatus("done");
@@ -422,6 +423,8 @@ function AppMain() {
         } else if (data.status === "error") {
           setRcaStatus("error");
           clearInterval(rcaPollRef.current);
+        } else if (data.phases_done?.length > 0) {
+          localStorage.setItem('rcaProgress', JSON.stringify({ phases_done: data.phases_done }));
         }
       } catch {
         clearInterval(rcaPollRef.current);

@@ -188,7 +188,7 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
         records_2 = job["eval_records_2"][:5]  # TEST ONLY
         config_hashes = job.get("config_hashes", [])
         phases_done = []
-        _rca_results[rca_job_id]["phases_done"] = phases_done 
+        _rca_results[rca_job_id] = {"status": "running", "phases_done": phases_done}
         if len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]:
             rca_1 = await asyncio.gather(*[run_rca(r, phases_done) for r in records_1])
             rca_2 = rca_1  # same config, reuse results
@@ -197,7 +197,8 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
                 asyncio.gather(*[run_rca(r, phases_done) for r in records_1]),
                 asyncio.gather(*[run_rca(r, phases_done) for r in records_2]),
             )
-        _rca_results[rca_job_id] = {"status": "done", "rca_records_1": rca_1, "rca_records_2": rca_2}
+        _rca_results[rca_job_id] = {"status": "done", "phases_done": phases_done,
+                                    "rca_records_1": rca_1, "rca_records_2": rca_2}
     except Exception as e:
         traceback.print_exc()
         _rca_results[rca_job_id] = {"status": "error", "message": str(e)}
