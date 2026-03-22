@@ -212,11 +212,32 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
 
 function RCAResultsPage({ results }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+  const [phasesDone, setPhasesDone] = useState([]);
+
+  useEffect(() => {
+    if (results) return;
+    const interval = setInterval(() => {
+      const raw = localStorage.getItem('rcaProgress');
+      if (raw) setPhasesDone(JSON.parse(raw).phases_done || []);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [results]);
+
   if (!results) return (
-    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.8rem",
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
       height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
-      ⏳ Analysis is running... this page will update automatically when done.
+      <div style={{ color: "#0000ff", fontSize: "1.8rem" }}>
+        ⏳ Analysis is running... this page will update automatically when done.
+      </div>
+      {phasesDone.includes("ai_judge") && (
+        <div style={{ color: "#2ecc71", fontSize: "1.2rem", marginTop: "16px" }}>✅ Finished AI-as-Judge Review</div>
+      )}
+      {phasesDone.includes("references") && (
+        <div style={{ color: "#2ecc71", fontSize: "1.2rem", marginTop: "8px" }}>✅ Finished References Review</div>
+      )}
+      {phasesDone.includes("query_quality") && (
+        <div style={{ color: "#2ecc71", fontSize: "1.2rem", marginTop: "8px" }}>✅ Finished Query Quality Review</div>
+      )}
     </div>
   );
 
@@ -412,6 +433,7 @@ function AppMain() {
   const handleRunRCA = async () => {
     setRcaStatus("running");
     localStorage.removeItem('rcaResults');
+    localStorage.removeItem('rcaProgress');
     rcaTabRef.current = window.open(`${window.location.pathname}?view=rca`, '_blank');
     try {
       const res = await fetch(`https://${BACKEND_URL}/run-rca/${jobId}`, { method: "POST" });

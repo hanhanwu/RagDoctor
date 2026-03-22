@@ -640,7 +640,7 @@ async def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, a
 # ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
 
 
-async def run_rca(record):
+async def run_rca(record, phases_done=None):
     query = record['query']
 
     async with rca_llm_sem:
@@ -662,6 +662,8 @@ async def run_rca(record):
 
     record['new_retrieval_quality_score'] = rq_score_after_review
     record['new_answer_quality_score'] = aq_score_after_review
+    if phases_done is not None and "ai_judge" not in phases_done:
+        phases_done.append("ai_judge")
 
     # ------------- Review References ------------- #
     needs_re_eval = 0
@@ -696,6 +698,8 @@ async def run_rca(record):
             needs_re_eval = 1
     
     record['needs_re_eval'] = needs_re_eval
+    if phases_done is not None and "references" not in phases_done:
+        phases_done.append("references")
 
     # ------------- Review Query Quality ------------- #
     if query_quality == 'ambiguous':
@@ -704,4 +708,7 @@ async def run_rca(record):
 
     record['query_quality'] = query_quality
     record['root_cause_analysis'] = root_cause_analysis
+    if phases_done is not None and "query_quality" not in phases_done:
+        phases_done.append("query_quality")
+        
     return record
