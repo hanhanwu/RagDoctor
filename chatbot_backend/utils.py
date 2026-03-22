@@ -663,52 +663,45 @@ async def run_rca(record):
     record['new_retrieval_quality_score'] = rq_score_after_review
     record['new_answer_quality_score'] = aq_score_after_review
 
-    # # ------------- Review References ------------- #
-    # needs_re_eval = 0
-    # rc_alignment_score, rc_alignment_reason = None, None
-    # ac_alignment_score, ac_alignment_reason = None, None
+    # ------------- Review References ------------- #
+    needs_re_eval = 0
+    rc_alignment_score, ac_alignment_score = None, None
 
-    # if rq_score_after_review == -1:
-    #     root_cause_analysis.append({'Please review referenced content':
-    #                                         'referenced content is much less relevant to the query than retrieved content'})
-    #     needs_re_eval = 1
-    # if aq_score_after_review == -1:
-    #     root_cause_analysis.append({"Please review referenced answer":
-    #                                         "referenced answer is much less relevant to the query than AI's answer"})
-    #     needs_re_eval = 1
+    if rq_score_after_review == -1:
+        root_cause_analysis.append({'Please review referenced content':
+                                            'referenced content is much less relevant to the query than retrieved content'})
+        needs_re_eval = 1
+    if aq_score_after_review == -1:
+        root_cause_analysis.append({"Please review referenced answer":
+                                            "referenced answer is much less relevant to the query than AI's answer"})
+        needs_re_eval = 1
 
-    # if rq_score_after_review >= 2 and aq_score_after_review in [0, 1]:  # good retrieval, bad answer
-    #     referenced_answer_context_alignment = await review_ta_async(rca_llm, query,
-    #                                                                 record['referenced_answer'], record['context'])
-    #     rc_alignment_score = referenced_answer_context_alignment.score
-    #     rc_alignment_reason = referenced_answer_context_alignment.reasoning
-    #     if rc_alignment_score == 0:
-    #         root_cause_analysis.append({'Please review referenced answer':
-    #                                     'referenced answer has critical information misaligned with the referenced content'})
-    #         needs_re_eval = 1
+    if rq_score_after_review >= 2 and aq_score_after_review in [0, 1]:  # good retrieval, bad answer
+        referenced_answer_context_alignment = await review_ta_async(rca_llm, query,
+                                                                    record['referenced_answer'], record['context'])
+        rc_alignment_score = referenced_answer_context_alignment.score
+        if rc_alignment_score == 0:
+            root_cause_analysis.append({'Please review referenced answer':
+                                        'referenced answer has critical information misaligned with the referenced content'})
+            needs_re_eval = 1
             
-    # if rq_score_after_review in [0, 1] and aq_score_after_review >= 2:  # good answer, bad retrieval
-    #     ai_answer_context_alignment = await review_ta_async(rca_llm, query,
-    #                                                                 record['ai_answer'], record['context'])
-    #     ac_alignment_score = ai_answer_context_alignment.score
-    #     ac_alignment_reason = ai_answer_context_alignment.reasoning
-    #     if ac_alignment_score == 0:
-    #         root_cause_analysis.append({"Please review referenced content":
-    #                                     "AI's answer got a high score but retrieval score is low, \
-    #                                     please check whether need to add or merge retrieved content into the referenced content."})
-    #         needs_re_eval = 1
+    if rq_score_after_review in [0, 1] and aq_score_after_review >= 2:  # good answer, bad retrieval
+        ai_answer_context_alignment = await review_ta_async(rca_llm, query,
+                                                                    record['ai_answer'], record['context'])
+        ac_alignment_score = ai_answer_context_alignment.score
+        if ac_alignment_score == 0:
+            root_cause_analysis.append({"Please review referenced content":
+                                        "AI's answer got a high score but retrieval score is low, \
+                                        please check whether need to add or merge retrieved content into the referenced content."})
+            needs_re_eval = 1
     
-    # record['needs_re_eval'] = needs_re_eval
-    # record['referenced_answer_context_alignment'] = rc_alignment_score
-    # record['referenced_answer_context_alignment_reason'] = rc_alignment_reason
-    # record['ai_answer_context_alignment'] = ac_alignment_score
-    # record['ai_answer_context_alignment_reason'] = ac_alignment_reason
+    record['needs_re_eval'] = needs_re_eval
 
-    # # ------------- Review Query Quality ------------- #
-    # if query_quality == 'ambiguous':
-    #     query_variants = await expand_query_async(rca_llm, query)
-    #     root_cause_analysis.append({'Please review query quality': query_variants})
+    # ------------- Review Query Quality ------------- #
+    if query_quality == 'ambiguous':
+        query_variants = await expand_query_async(rca_llm, query)
+        root_cause_analysis.append({'Please review query quality': query_variants})
 
-    # record['query_quality'] = query_quality
-    # record['root_cause_analysis'] = root_cause_analysis
+    record['query_quality'] = query_quality
+    record['root_cause_analysis'] = root_cause_analysis
     return record
