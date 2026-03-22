@@ -212,32 +212,11 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
 
 function RCAResultsPage({ results }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [phasesDone, setPhasesDone] = useState([]);
-
-  useEffect(() => {
-    if (results) return;
-    const interval = setInterval(() => {
-      const raw = localStorage.getItem('rcaProgress');
-      if (raw) setPhasesDone(JSON.parse(raw).phases_done || []);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [results]);
 
   if (!results) return (
-    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.8rem",
       height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
-      <div style={{ color: "#0000ff", fontSize: "1.8rem" }}>
         ⏳ Analysis is running... this page will update automatically when done.
-      </div>
-      {phasesDone.includes("ai_judge") && (
-        <div style={{ color: "#2ecc71", fontSize: "1.2rem", marginTop: "16px" }}>✅ Finished AI-as-Judge Review</div>
-      )}
-      {phasesDone.includes("references") && (
-        <div style={{ color: "#2ecc71", fontSize: "1.2rem", marginTop: "8px" }}>✅ Finished References Review</div>
-      )}
-      {phasesDone.includes("query_quality") && (
-        <div style={{ color: "#2ecc71", fontSize: "1.2rem", marginTop: "8px" }}>✅ Finished Query Quality Review</div>
-      )}
     </div>
   );
 
@@ -414,7 +393,6 @@ function AppMain() {
         const data = await res.json();
         if (data.status === "done") {
           const results = { rag1: data.rca_records_1, rag2: data.rca_records_2 };
-          localStorage.removeItem('rcaProgress');
           localStorage.setItem('rcaResults', JSON.stringify(results));
           setRcaResults(results);
           setRcaStatus("done");
@@ -423,8 +401,6 @@ function AppMain() {
         } else if (data.status === "error") {
           setRcaStatus("error");
           clearInterval(rcaPollRef.current);
-        } else if (data.phases_done?.length > 0) {
-          localStorage.setItem('rcaProgress', JSON.stringify({ phases_done: data.phases_done }));
         }
       } catch {
         clearInterval(rcaPollRef.current);
@@ -436,7 +412,6 @@ function AppMain() {
   const handleRunRCA = async () => {
     setRcaStatus("running");
     localStorage.removeItem('rcaResults');
-    localStorage.removeItem('rcaProgress');
     rcaTabRef.current = window.open(`${window.location.pathname}?view=rca`, '_blank');
     try {
       const res = await fetch(`https://${BACKEND_URL}/run-rca/${jobId}`, { method: "POST" });
