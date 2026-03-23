@@ -184,10 +184,8 @@ async def get_job_status(job_id: str):
 async def _run_rca_task(rca_job_id: str, job_id: str):
     try:
         job = _job_results[job_id]
-        # records_1 = job["eval_records_1"]
-        # records_2 = job["eval_records_2"]
-        records_1 = job["eval_records_1"][:5]  # TEST ONLY
-        records_2 = job["eval_records_2"][:5]  # TEST ONLY
+        records_1 = job["eval_records_1"]
+        records_2 = job["eval_records_2"]
         config_hashes = job.get("config_hashes", [])
         if len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]:
             rca_1 = await asyncio.gather(*[run_rca(r) for r in records_1])

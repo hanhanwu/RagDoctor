@@ -611,6 +611,21 @@ function AppMain() {
             ----------------------- Made by super Hanhan! -----------------------
           </div>
         </div>
+        <div style={{ textAlign: "center", marginTop: "10px", marginBottom: "16px", fontSize: "0.95rem", color: "#555" }}>
+          More discussion on Production RAG:{" "}
+          <a href="https://discord.gg/X6mbXXvw" target="_blank" rel="noopener noreferrer"
+            style={{ marginLeft: "6px", color: "#5865F2", fontWeight: "bold", textDecoration: "underline" }}>
+            Discord
+          </a>
+          <a href="mailto:wuhanhan999@gmail.com"
+            style={{ marginLeft: "12px", color: "#7B68EE", fontWeight: "bold", textDecoration: "underline" }}>
+            Email
+          </a>
+          <a href="https://www.linkedin.com/in/hanhanwu/" target="_blank" rel="noopener noreferrer"
+            style={{ marginLeft: "12px", color: "#0A66C2", fontWeight: "bold", textDecoration: "underline" }}>
+            LinkedIn
+          </a>
+        </div>
           <table style={{ width: "80%", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #888" }}></table>
           <table style={{ width: "80%", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #888" }}>
           <thead>
