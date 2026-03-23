@@ -418,6 +418,7 @@ function AppMain() {
   const [rcaJobId, setRcaJobId] = useState(null);
   const rcaPollRef = useRef(null);
   const rcaTabRef = useRef(null);
+  const [settingsChangedAfterRCA, setSettingsChangedAfterRCA] = useState(false);
 
   const BACKEND_URL = "hanhanchatbot-production.up.railway.app";
 
@@ -450,7 +451,22 @@ function AppMain() {
     return () => clearInterval(rcaPollRef.current);
   }, [rcaJobId]);
 
+  useEffect(() => {
+    if (rcaStatus === "done") setRcaStatus("idle");
+  }, [rag1Model, rag1TopN, rag1SemanticWeight, rag1AGLLM,
+      rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM]);
+
+  useEffect(() => {
+   if (rcaStatus === "done") setSettingsChangedAfterRCA(true);
+ }, [rag1Model, rag1TopN, rag1SemanticWeight, rag1AGLLM,
+     rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM]);
+
+  useEffect(() => {
+   if (ragStatus === "done") setSettingsChangedAfterRCA(false);
+ }, [ragStatus]);
+
   const handleRunRCA = async () => {
+    setSettingsChangedAfterRCA(false);
     setRcaStatus("running");
     localStorage.removeItem('rcaResults');
     rcaTabRef.current = window.open(`${window.location.pathname}?view=rca`, '_blank');
@@ -736,7 +752,8 @@ function AppMain() {
                      scoreDefinitions={ANSWER_SCORE_DEFS}
                    />
                  </div>
-                 <button
+                 {!settingsChangedAfterRCA && (
+                  <button
                     style={{
                       marginTop: "66px",
                       background: "#000",
@@ -754,6 +771,7 @@ function AppMain() {
                   >
                     {rcaStatus === "running" ? "Running now..." : "🔍 Root Cause Analysis"}
                   </button>
+                )}
                 </>
                )}
              </>
