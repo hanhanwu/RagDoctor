@@ -355,6 +355,42 @@ function RCAResultsPage({ results }) {
           </button>
         </div>
       )}
+      {(results.agg_review_1 || results.agg_review_2) && (
+        <div style={{ marginTop: "40px" }}>
+          <h2 style={{ color: "#800000", marginBottom: "16px" }}>📊 Aggregate RAG System Review</h2>
+          <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
+            {[
+              { label: "RAG 1", review: results.agg_review_1 },
+              { label: "RAG 2", review: results.agg_review_2 },
+            ].map(({ label, review }) => (
+              <div key={label} style={{ flex: 1, border: "1px solid #ccc", borderRadius: "8px",
+                padding: "20px", background: "#fafbfc" }}>
+                <h3 style={{ color: "#800000", marginBottom: "12px" }}>{label}</h3>
+                {review ? (
+                  <>
+                    <div style={{ marginBottom: "16px" }}>
+                      <strong style={{ color: "#e74c3c" }}>Root Cause Analysis:</strong>
+                      <p style={{ marginTop: "8px", whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
+                        {review.root_cause_analysis}
+                      </p>
+                    </div>
+                    <div>
+                      <strong style={{ color: "#27ae60" }}>Improvement Suggestions:</strong>
+                      <p style={{ marginTop: "8px", whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
+                        {review.improvement_suggestions}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ color: "#888", fontStyle: "italic" }}>
+                    All records flagged for re-evaluation — no aggregate review available.
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -392,7 +428,12 @@ function AppMain() {
         const res = await fetch(`https://${BACKEND_URL}/rca-status/${rcaJobId}`);
         const data = await res.json();
         if (data.status === "done") {
-          const results = { rag1: data.rca_records_1, rag2: data.rca_records_2 };
+          const results = {
+            rag1: data.rca_records_1,
+            rag2: data.rca_records_2,
+            agg_review_1: data.agg_review_1,
+            agg_review_2: data.agg_review_2,
+          };
           localStorage.setItem('rcaResults', JSON.stringify(results));
           setRcaResults(results);
           setRcaStatus("done");

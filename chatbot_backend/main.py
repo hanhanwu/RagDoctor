@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import make_url
 
-from .utils import run_all_in_processes, run_auto_eval, run_rca
+from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_review, FINANCIAL_RAG_SYSTEM_PROMPT, rca_llm
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -139,6 +139,8 @@ async def process_job_queue():
             _job_results[job_id] = {
                 "status": "done",
                 "config_hashes": config_hashes,
+                "rag1_config": request.rag1.model_dump(),
+                "rag2_config": request.rag2.model_dump(),
                 "rag1": eval_results.get(config_hashes[0], {}),
                 "rag2": eval_results.get(config_hashes[1], {}),
                 "eval_records_1": eval_results.get(config_hashes[0], {}).get("eval_records", []),
@@ -195,9 +197,43 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
                 asyncio.gather(*[run_rca(r) for r in records_1]),
                 asyncio.gather(*[run_rca(r) for r in records_2]),
             )
-        _rca_results[rca_job_id] = {"status": "done", 
-                                    "rca_records_1": rca_1,
-                                      "rca_records_2": rca_2}
+        rag1_config = job.get("rag1_config", {})
+        rag2_config = job.get("rag2_config", {})
+
+        def build_agg_df(rca_records, cfg):
+            df = pd.DataFrame(list(rca_records))
+            df['embedding_model'] = cfg.get('embedding_model', '')
+            df['top_n_retrieval']  = cfg.get('top_n', 0)
+            df['semantic_weight']  = cfg.get('semantic_weight', 0.0)
+            df['answer_gen_llm']   = cfg.get('answer_gen_llm', '')
+            return df[df['needs_re_eval'] == 0]
+
+        agg_df_1 = build_agg_df(rca_1, rag1_config)
+        same_config = len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]
+        agg_df_2 = agg_df_1 if same_config else build_agg_df(rca_2, rag2_config)
+
+        agg_tasks = []
+        if len(agg_df_1) > 0:
+            agg_tasks.append(run_agg_rag_review(agg_df_1, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
+        if not same_config and len(agg_df_2) > 0:
+            agg_tasks.append(run_agg_rag_review(agg_df_2, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
+        agg_results = await asyncio.gather(*agg_tasks)
+
+        result_iter = iter(agg_results)
+        agg_review_1 = next(result_iter) if len(agg_df_1) > 0 else None
+        agg_review_2 = agg_review_1 if same_config else (next(result_iter) if len(agg_df_2) > 0 else None)
+
+        def _to_dict(r):
+            return {"root_cause_analysis": r.root_cause_analysis,
+                    "improvement_suggestions": r.improvement_suggestions} if r else None
+
+        _rca_results[rca_job_id] = {
+            "status": "done",
+            "rca_records_1": list(rca_1),
+            "rca_records_2": list(rca_2),
+            "agg_review_1": _to_dict(agg_review_1),
+            "agg_review_2": _to_dict(agg_review_2),
+        }
     except Exception as e:
         traceback.print_exc()
         _rca_results[rca_job_id] = {"status": "error", "message": str(e)}
