@@ -210,6 +210,33 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
   );
 }
 
+function ExpandableText({ text, maxTokens = 66 }) {
+  const [expanded, setExpanded] = useState(false);
+  const tokens = (text || "").split(/\s+/).filter(Boolean);
+  const isLong = tokens.length > maxTokens;
+  const display = (!isLong || expanded) ? text : tokens.slice(0, maxTokens).join(" ") + "…";
+  return (
+    <>
+      {display}
+      {isLong && (
+        <div>
+          <button onClick={() => setExpanded(e => !e)} style={{
+            marginTop: "4px", background: "none", border: "none",
+            color: "#800000", cursor: "pointer", fontSize: "0.75rem",
+            padding: 0, fontWeight: "bold",
+          }}>
+            {expanded ? "▲ Less" : "▼ More"}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ExpandableCell({ text, style, maxTokens = 66 }) {
+  return <td style={style}><ExpandableText text={text} maxTokens={maxTokens} /></td>;
+}
+
 function RCAResultsPage({ results }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -260,10 +287,10 @@ function RCAResultsPage({ results }) {
                   {[
                     { label: "Row Number",                     minW: "40px"  },
                     { label: "Query",                          minW: "180px" },
-                    { label: "Context",                        minW: "200px" },
+                    { label: "Referenced Content",             minW: "200px" },
                     { label: "Retrieved Content",              minW: "200px" },
                     { label: "Referenced Answer",              minW: "180px" },
-                    { label: "AI's Answer",                    minW: "180px" },
+                    { label: "AI's Answer\nRAG1 / RAG2",       minW: "180px" },
                     { label: "Retrieval Quality Score\nRAG1 | RAG2", minW: "160px" },
                     { label: "Answer Quality Score\nRAG1 | RAG2",    minW: "160px" },
                     { label: "Suggestions",                    minW: "260px" },
@@ -292,10 +319,19 @@ function RCAResultsPage({ results }) {
                     <tr key={i}>
                       <td style={cellStyle}>{i + 1}</td>
                       <td style={cellStyle}>{item.query}</td>
-                      <td style={cellStyle}>{item.context}</td>
-                      <td style={cellStyle}>{item.retrieved_content}</td>
-                      <td style={cellStyle}>{item.referenced_answer ?? item.expected_answer}</td>
-                      <td style={cellStyle}>{item.ai_answer}</td>
+                      <ExpandableCell text={item.context} style={cellStyle} />
+                      <ExpandableCell text={item.retrieved_content} style={cellStyle} />
+                      <ExpandableCell text={item.referenced_answer ?? item.expected_answer} style={cellStyle} />
+                      <td style={{ ...cellStyle, padding: 0 }}>
+                        <div style={{ padding: "8px 12px", borderBottom: "1px solid #e0e0e0" }}>
+                          <span style={{ fontSize: "0.75rem", color: "#888", fontWeight: "bold" }}>RAG1</span><br />
+                          <ExpandableText text={item.ai_answer} />
+                        </div>
+                        <div style={{ padding: "8px 12px" }}>
+                          <span style={{ fontSize: "0.75rem", color: "#888", fontWeight: "bold" }}>RAG2</span><br />
+                          <ExpandableText text={rag2Item.ai_answer} />
+                        </div>
+                      </td>
                       <td style={{ ...cellStyle, textAlign: "center" }}>
                         <span style={{ color: SCORE_COLORS[String(item.new_retrieval_quality_score)] || "#333" }}>
                           {item.new_retrieval_quality_score}
