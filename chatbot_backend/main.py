@@ -2,6 +2,7 @@ import asyncio
 import traceback
 import os
 import uuid
+import time
 import psycopg2
 import pandas as pd
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_rev
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(process_job_queue())
+    asyncio.create_task(cleanup_old_jobs())
     yield
 app = FastAPI(lifespan=lifespan)
 
@@ -50,6 +52,7 @@ _job_queue: asyncio.Queue = asyncio.Queue()
 _job_results: dict = {}   # job_id -> result dict
 _queue_order: list = []   # job_ids waiting, in order
 _rca_results: dict = {}   # rca_job_id -> result dict
+_job_to_rca: dict = {}    # job_id -> rca_job_id, prevents duplicate RCA tasks
 
 DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
 DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
@@ -124,20 +127,40 @@ async def load_fiqa(request: PreprocessRequest, background_tasks: BackgroundTask
     return {"message": f"{request.dataset_name} preprocessing started"}
 
 
+async def cleanup_old_jobs(max_age_seconds=14400, interval_seconds=7200):
+    """Remove done/error jobs older than max_age_seconds. Runs every interval_seconds."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        now = time.time()
+        to_delete = [
+            job_id for job_id, result in list(_job_results.items())
+            if result.get("status") in ("done", "error")
+            and now - result.get("completed_at", now) > max_age_seconds
+        ]
+        for job_id in to_delete:
+            del _job_results[job_id]
+            rca_job_id = _job_to_rca.pop(job_id, None)
+            if rca_job_id:
+                _rca_results.pop(rca_job_id, None)
+        if to_delete:
+            print(f"Cleaned up {len(to_delete)} old jobs")
+
+
 async def process_job_queue():
     while True:
-        job_id, request = await _job_queue.get()
+        job_id, request, snapshot = await _job_queue.get()
         if job_id in _queue_order:
             _queue_order.remove(job_id)
         _job_results[job_id] = {"status": "running"}
         try:
             cfgs = [request.rag1, request.rag2]
             config_hashes = await run_all_in_processes(
-                cfgs, rag_data['rag_lst'], rag_data['documents'], db_url, request.dataset
+                cfgs, snapshot['rag_lst'], snapshot['documents'], db_url, request.dataset
             )
-            eval_results = await run_auto_eval(config_hashes, db_url, rag_data['rag_df'])
+            eval_results = await run_auto_eval(config_hashes, db_url, snapshot['rag_df'])
             _job_results[job_id] = {
                 "status": "done",
+                "completed_at": time.time(),
                 "config_hashes": config_hashes,
                 "rag1_config": request.rag1.model_dump(),
                 "rag2_config": request.rag2.model_dump(),
@@ -148,7 +171,8 @@ async def process_job_queue():
             }
         except Exception as e:
             traceback.print_exc()
-            _job_results[job_id] = {"status": "error", "message": str(e)}
+            _job_results[job_id] = {"status": "error", "message": str(e),
+                                    "completed_at": time.time()}
         finally:
             _job_queue.task_done()
 
@@ -161,11 +185,16 @@ async def get_preprocessing_status():
 @app.post("/run-rags")
 async def run_rags(request: DatasetRequest):
     job_id = str(uuid.uuid4())
+    snapshot = {
+         "rag_lst": list(rag_data["rag_lst"]),
+         "documents": list(rag_data["documents"]),
+         "rag_df": rag_data["rag_df"],
+     }
     is_running = any(v["status"] == "running" for v in _job_results.values())
     position = len(_queue_order) + (1 if is_running else 0)
     _job_results[job_id] = {"status": "queued", "position": position}
     _queue_order.append(job_id)
-    await _job_queue.put((job_id, request))
+    await _job_queue.put((job_id, request, snapshot))
     print(f"Job {job_id} queued at position {position}. Dataset: {request.dataset}")
     return {"status": "queued", "job_id": job_id, "position": position}
 
@@ -227,6 +256,7 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
 
         _rca_results[rca_job_id] = {
             "status": "done",
+            "completed_at": time.time(),
             "rca_records_1": list(rca_1),
             "rca_records_2": list(rca_2),
             "agg_review_1": _to_dict(agg_review_1),
@@ -234,7 +264,9 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
         }
     except Exception as e:
         traceback.print_exc()
-        _rca_results[rca_job_id] = {"status": "error", "message": str(e)}
+        _rca_results[rca_job_id] = {"status": "error", "message": str(e),
+                                    "completed_at": time.time()}
+        
 
 
 @app.post("/run-rca/{job_id}")
@@ -245,7 +277,12 @@ async def run_rca_endpoint(job_id: str, background_tasks: BackgroundTasks):
     config_hashes = job.get("config_hashes")
     if not config_hashes or len(config_hashes) < 2:
         return {"status": "error", "message": "Config hashes not found in job"}
+    if job_id in _job_to_rca:
+         existing_rca_job_id = _job_to_rca[job_id]
+         existing_status = _rca_results.get(existing_rca_job_id, {}).get("status", "unknown")
+         return {"status": existing_status, "rca_job_id": existing_rca_job_id}
     rca_job_id = str(uuid.uuid4())
+    _job_to_rca[job_id] = rca_job_id
     _rca_results[rca_job_id] = {"status": "running"}
     background_tasks.add_task(_run_rca_task, rca_job_id, job_id)
     return {"status": "running", "rca_job_id": rca_job_id}
