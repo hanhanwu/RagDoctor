@@ -50,6 +50,9 @@
 
 
 ## Learning Notes 🍀
+### Financial Cost Notes 💸
+* `from llama_index.embeddings.huggingface import HuggingFaceEmbedding` use lazy-loading so that it's used only when needed, don't import it at startup, otherwise the idel RAM will cumulate monthly and costs lots of money. It uses transformer model, which costs large RAM.
+
 ### Build Speed Up Notes 🚀
 * If there's large packages to install, using docker is faster than Railway's default Railpack, cuz Dockerfile steps create layers and only layers that changed are rebuilt. So if requirements.txt stay the same, it's reusable with Docker build. Railpack treats every deployment as a fresh environment.
 * `uv` install is faster than `pip` install as it uses Uses a precompiled wheel cache and optimized resolver, also skips unnecessary dependency checks.
