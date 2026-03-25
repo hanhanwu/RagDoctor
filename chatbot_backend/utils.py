@@ -14,7 +14,6 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core import VectorStoreIndex
 from llama_index.core.base.response.schema import Response
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 
 # ============================================================================
@@ -188,6 +187,7 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
         conn.close()
         return config_hash
 
+    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
     embed_model = HuggingFaceEmbedding(
                 model_name=embed_model_str, 
                 device="cpu",
