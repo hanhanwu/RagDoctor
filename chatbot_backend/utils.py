@@ -23,8 +23,8 @@ from llama_index.core.base.response.schema import Response
 embedding_map = {
     'text-embedding-3-small': {'embedding_dim': 1536},
 }
-os.environ["GROQ_API_KEY"] = os.getenv["GROQ_TOKEN"]
-os.environ["OPENAI_API_KEY"] = os.getenv["OPENAI_API_KEY"]
+os.environ["GROQ_API_KEY"] = os.getenv("GROQ_TOKEN")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 @retry(
     retry=retry_if_exception_type(RateLimitError),
