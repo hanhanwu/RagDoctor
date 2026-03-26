@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const embeddingModels = [
-  { label: "BAAI/bge-small-en-v1.5", value: "BAAI/bge-small-en-v1.5" },
+  { label: "text-embedding-3-small", value: "text-embedding-3-small" },
 ];
 const answerGenLLMModels = [
   { label: "llama-3.1-8b-instant", value: "llama-3.1-8b-instant" },

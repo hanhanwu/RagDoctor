@@ -2,7 +2,7 @@ pandas
 llama-index==0.14.13
 numpy==2.4.1
 llama-index-retrievers-bm25==0.6.5
-llama-index-embeddings-huggingface==0.6.1
+llama-index-embeddings-openai==0.5.1
 llama-index-llms-groq==0.4.1
 langchain_community==0.3.29
 langchain==0.3.27

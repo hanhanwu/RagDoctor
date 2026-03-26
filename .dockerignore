@@ -8,6 +8,8 @@ __pycache__
 venv
 .cache
 datasets
+datasets/
 experiments
+experiments/
 chatbot_backend/all_rag_pipeline_config.yaml
 chatbot_backend/DB_processing.ipynb

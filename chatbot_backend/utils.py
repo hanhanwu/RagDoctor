@@ -21,9 +21,10 @@ from llama_index.core.base.response.schema import Response
 # ============================================================================
 
 embedding_map = {
-    'BAAI/bge-small-en-v1.5': {'embedding_dim': 384},
+    'text-embedding-3-small': {'embedding_dim': 1536},
 }
-os.environ["GROQ_API_KEY"] = os.environ["GROQ_TOKEN"]
+os.environ["GROQ_API_KEY"] = os.getenv["GROQ_TOKEN"]
+os.environ["OPENAI_API_KEY"] = os.getenv["OPENAI_API_KEY"]
 
 @retry(
     retry=retry_if_exception_type(RateLimitError),
@@ -187,11 +188,9 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
         conn.close()
         return config_hash
 
-    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-    embed_model = HuggingFaceEmbedding(
-                model_name=embed_model_str, 
-                device="cpu",
-                embed_batch_size=16
+    from llama_index.embeddings.openai import OpenAIEmbedding
+    embed_model = OpenAIEmbedding(
+                model=embed_model_str
             )
     llm = Groq(model=llm_str, temperature=0)
     table_name=f"data_embeddings_{embed_model_str\
