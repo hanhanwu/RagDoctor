@@ -193,7 +193,7 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
                 model=embed_model_str
             )
     llm = Groq(model=llm_str, temperature=0)
-    table_name=f"data_embeddings_{embed_model_str\
+    table_name=f"embeddings_{embed_model_str\
                                .split('/')[-1].replace('-', '_').replace('.', 'dot')}"
 
     vector_store = PGVectorStore.from_params(
