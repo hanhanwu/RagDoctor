@@ -60,7 +60,6 @@
 ### Prevent Multi-User Conflicts
 * Because `rag_data` is global, only run data preprocessing once when multiple users selected same data simultiously 
 * Added `asyncio.Lock` to allow only one user to run `/run-rags` each time to avoid Railway memory exhaustion or users' results contamination
-  * 🍄 TO-DO: change to Job queue for multi-users, rather than having users re-run manually after lock released
 * Groq could have 429 rate limit errors --> replace `_invoke_with_retry()` with `await chain.ainvoke()`
 
 ### How to Automatically Upload Files into Google Drive
