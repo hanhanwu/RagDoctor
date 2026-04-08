@@ -268,7 +268,6 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
                                     "completed_at": time.time()}
         
 
-
 @app.post("/run-rca/{job_id}")
 async def run_rca_endpoint(job_id: str, background_tasks: BackgroundTasks):
     job = _job_results.get(job_id)
