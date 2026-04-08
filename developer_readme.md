@@ -1,4 +1,4 @@
-# Hanhan_Chatbot
+# RAG Doctor - Developer Guidance
 
 ## Setup
 * Install Expo Go app from App Store / Google Play.
