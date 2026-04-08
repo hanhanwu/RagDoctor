@@ -32,8 +32,9 @@ def json_default(obj):
 
 def upload_to_google_drive(df, folder_id, output_filename):
     SCOPES = ['https://www.googleapis.com/auth/drive.file']
-    TOKEN_FILE = r'C:\Users\wuhan\.gcp\token.pickle'
-    CREDENTIALS_FILE = r'C:\Users\wuhan\.gcp\drive_auth.json'
+    GCP_DIR = os.environ.get("GCP_CREDENTIALS_DIR", os.path.join(os.path.expanduser("~"), ".gcp"))
+    TOKEN_FILE = os.path.join(GCP_DIR, "token.pickle")
+    CREDENTIALS_FILE = os.path.join(GCP_DIR, "drive_auth.json")
 
     creds = None
     if os.path.exists(TOKEN_FILE):
