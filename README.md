@@ -1,12 +1,16 @@
 # RAG Doctor
 
-## 🎯 About
-* RAG Doctor automatically manages knowledge, evaluates performance, identifies root causes, and continuously improves RAG systems. So that enterprises can rely on it in production without constant manual effort. It turns RAG into a self-improving, enterprise-grade system that delivers consistently accurate answers over time.
-* Try RAG Doctor [here >>][2]
+## The Challenges
+Teams can build RAG demos fast, but making them reliable is painfully slow and manual.
 
+## The Solution
+* RAG Doctor replaces 90% of manual eval work and tells you how to improve your RAG.
+* Find out in 2 minutes which RAG version is actually better, and why:
 <p align="center">
 	<img src="frontend/assets/github_anime.gif" alt="github animation" />
 </p>
+
+* [Try RAG Doctor Playground here >>][2]
 
 
 ## 🙌 Development Contribution 
