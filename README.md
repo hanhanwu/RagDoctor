@@ -1,7 +1,8 @@
 # RAG Doctor
 
-## About Rag Doctor
-RAG Doctor automatically manages knowledge, evaluates performance, identifies root causes, and continuously improves RAG systems. So that enterprises can rely on it in production without constant manual effort. It turns RAG into a self-improving, enterprise-grade system that delivers consistently accurate answers over time.
+## 🎯 About
+* RAG Doctor automatically manages knowledge, evaluates performance, identifies root causes, and continuously improves RAG systems. So that enterprises can rely on it in production without constant manual effort. It turns RAG into a self-improving, enterprise-grade system that delivers consistently accurate answers over time.
+* Try RAG Doctor [here >>][2]
 
 <p align="center">
 	<img src="frontend/assets/github_anime.gif" alt="github animation" />
@@ -17,4 +18,5 @@ RAG Doctor automatically manages knowledge, evaluates performance, identifies ro
 
 
 [1]:https://github.com/hanhanwu/RagDoctor/blob/main/developer_readme.md
+[2]:https://rag-dr.hanhanwu.com/
 
