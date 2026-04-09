@@ -1,19 +1,17 @@
-# RAG Doctor - The Missing Evaluation Layer for Production RAG
+<h1 align="center">RAG Doctor</h1>
+<p align="center"><b>The Missing Data-driven Evaluation Layer for Production RAG</b></p>
+
 
 ## The Challenges
 * Most teams don't fail at building RAG. They fail at <b>making it reliable</b>.
-* To move fast, teams adopt auto evaluation. But when results actually matter,
-they fall back to manual inspection: <b>slow, costly, and inconsistent</b>.
+* Teams adopt auto eval, but critical decisions still heavily rely on manual review: <b>slow, costly, and inconsistent</b>.
 
 
 ## What RAG Doctor Does
 * ⚡RAG Doctor reduces up to 90% of manual evaluation, compare RAG versions in minutes (not days).
 * 🔍 Pinpoint root causes across the pipeline, from knowledge base to retrieval, prompting, and outputs.
-* 📈 Turn evaluation into a fast, iterative loop
+* 📈 Turn evaluation into a fast, iterative loop 👉 [Try the Playground >>][2]
 <p align="center"> <img src="frontend/assets/github_anime.gif" alt="github animation" /> </p>
-
-👉 [Try the Playground >>][2]
-
 
 ## Why This Matters
 * Built from experience running production RAG systems where evaluation became the bottleneck.
@@ -32,9 +30,9 @@ they fall back to manual inspection: <b>slow, costly, and inconsistent</b>.
  
 
 ## 🤝 Join Us
-This is not just a tool, it helps shape the reliability of future AI products.
+This is not just a tool, it helps <b>shape the reliability of future AI products</b>.
 
-We're looking for people who:
+Join us if you:
 * care about making AI actually reliable
 * want to shape an emerging standard
 
