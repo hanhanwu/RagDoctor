@@ -198,7 +198,7 @@ function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }
           <XAxis dataKey="name" />
           <YAxis allowDecimals={false} />
           <Tooltip />
-          <Legend />
+          <Legend iconSize={10} wrapperStyle={{ fontSize: "15px", paddingLeft: "37px" }} />
           {allScores.map(score => (
             <Bar key={score} dataKey={score} stackId="a"
               fill={SCORE_COLORS[score] || "#8884d8"} name={`Score ${score}`}
