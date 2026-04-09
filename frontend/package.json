@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "deploy": "npx expo export -p web && wrangler deploy",
+    "preview": "npx expo export -p web && wrangler dev"
   },
   "dependencies": {
     "expo": "~54.0.33",
@@ -17,5 +19,8 @@
     "react-native-web": "^0.21.0",
     "recharts": "^3.8.0"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "wrangler": "^4.81.1"
+  }
 }
