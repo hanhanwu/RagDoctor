@@ -229,9 +229,15 @@ function ExpandableCell({ text, style, maxTokens = 66 }) {
   return <td style={style}><ExpandableText text={text} maxTokens={maxTokens} /></td>;
 }
 
-function RCAResultsPage({ results }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+function parseSuggestions(text) {
+  if (!text) return [];
+  return text
+    .split('\n')
+    .map(s => s.replace(/^[\s]*[\d]+[.)]\s*|^[\s]*[-•*]\s*/, '').trim())
+    .filter(s => s.length > 0);
+}
 
+function RCAResultsPage({ results }) {
   if (!results) return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#800000", fontSize: "1.8rem",
       height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
@@ -271,7 +277,6 @@ function RCAResultsPage({ results }) {
               overflowX: "auto",
               overflowY: "hidden",
               width: "100%",
-              maxHeight: isExpanded ? "none" : "120px",
             }}>
               <table style={{ borderCollapse: "collapse", minWidth: "1500px", fontSize: "0.85rem", width: "100%" }}>
                 <thead>
@@ -355,70 +360,10 @@ function RCAResultsPage({ results }) {
                 </tbody>
               </table>
             </div>
-            {!isExpanded && (
-              <div style={{
-                position: "absolute",
-                bottom: 0, left: 0, right: 0,
-                height: "48px",
-                background: "linear-gradient(transparent, #fff)",
-                pointerEvents: "none",
-              }} />
-            )}
-          </div>
-          <button
-            onClick={() => setIsExpanded(e => !e)}
-            style={{
-              marginTop: "8px",
-              background: "none",
-              border: "1px solid #ccc",
-              borderRadius: "4px",
-              padding: "4px 16px",
-              cursor: "pointer",
-              fontSize: "0.85rem",
-              color: "#800000",
-              fontWeight: "bold",
-            }}
-          >
-            {isExpanded ? "▲ Collapse" : "▼ Expand table"}
-          </button>
-        </div>
-      )}
-      {(results.agg_review_1 || results.agg_review_2) && (
-        <div style={{ marginTop: "40px" }}>
-          <h2 style={{ color: "#800000", marginBottom: "16px" }}>📊 Aggregate RAG System Review</h2>
-          <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
-            {[
-              { label: "RAG 1", review: results.agg_review_1 },
-              { label: "RAG 2", review: results.agg_review_2 },
-            ].map(({ label, review }) => (
-              <div key={label} style={{ flex: 1, border: "1px solid #ccc", borderRadius: "8px",
-                padding: "20px", background: "#fafbfc" }}>
-                <h3 style={{ color: "#800000", marginBottom: "12px" }}>{label}</h3>
-                {review ? (
-                  <>
-                    <div style={{ marginBottom: "16px" }}>
-                      <strong style={{ color: "#e74c3c" }}>Root Cause Analysis:</strong>
-                      <p style={{ marginTop: "8px", whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
-                        {review.root_cause_analysis}
-                      </p>
-                    </div>
-                    <div>
-                      <strong style={{ color: "#27ae60" }}>Improvement Suggestions:</strong>
-                      <p style={{ marginTop: "8px", whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
-                        {review.improvement_suggestions}
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <p style={{ color: "#888", fontStyle: "italic" }}>
-                    All records flagged for re-evaluation — no aggregate review available.
-                  </p>
-                )}
-              </div>
-            ))}
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -472,17 +417,19 @@ function DatasetPage({ onDatasetReady }) {
       }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }
         @keyframes arrowBounce { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(10px); opacity: 0.95; } 100% { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeInDown { 0% { opacity: 0; transform: translateY(-18px); } 100% { opacity: 1; transform: translateY(0); } }
+        @keyframes slideInText { 0% { opacity: 0; transform: translateX(-24px); } 35% { opacity: 1; transform: translateX(0); } 65% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(8px); } }
       `}</style>
 
       <h1 style={{ fontSize: "5.6rem", fontWeight: 800, color: "#800000", margin: "0 0 32px 0" }}>
         RAG Doctor
       </h1>
 
-      <div style={{ width: "620px" }}>
+      <div style={{ width: "620px", animation: "fadeInDown 0.6s ease both" }}>
         <p style={{ color: "#666", fontSize: "1.1rem", marginBottom: "8px", marginTop: 0 }}>
-          Select a dataset:
+          <span style={{ display: "inline-block", animation: "slideInText 2.8s ease-in-out infinite" }}>Select a dataset:</span>
         </p>
-      <table style={{ width: "620px", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #888" }}>
+      <table style={{ width: "620px", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #800000", borderRadius: "6px" }}>
         <thead>
           <tr>
             <th style={{ textAlign: "center", fontWeight: "bold", fontSize: "1.1rem", border: "1px solid #888", padding: "12px", background: "#f3f3f3" }}>
@@ -602,8 +549,9 @@ function ABTestPage({ selectedDataset }) {
   const [rcaStatus, setRcaStatus] = useState("idle");
   const [rcaJobId, setRcaJobId] = useState(null);
   const rcaPollRef = useRef(null);
-  const rcaTabRef = useRef(null);
   const [settingsChangedAfterRCA, setSettingsChangedAfterRCA] = useState(false);
+  const [rcaData, setRcaData] = useState(null);
+  const [settingsChangedAfterRAG, setSettingsChangedAfterRAG] = useState(false);
 
   useEffect(() => {
     if (!rcaJobId) return;
@@ -619,9 +567,13 @@ function ABTestPage({ selectedDataset }) {
             agg_review_2: data.agg_review_2,
           };
           localStorage.setItem('rcaResults', JSON.stringify(results));
+          const hasReEvalRows = results.rag1.some((item, i) =>
+            item?.needs_re_eval === 1 && results.rag2[i]?.needs_re_eval === 1
+          );
+          const rag2Suggestions = parseSuggestions(results.agg_review_2?.improvement_suggestions);
+          setRcaData({ hasReEvalRows, rag2Suggestions });
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
-          if (rcaTabRef.current) rcaTabRef.current.location.reload();
         } else if (data.status === "error") {
           setRcaStatus("error");
           clearInterval(rcaPollRef.current);
@@ -634,7 +586,7 @@ function ABTestPage({ selectedDataset }) {
   }, [rcaJobId]);
 
   useEffect(() => {
-    if (rcaStatus === "done") setRcaStatus("idle");
+    if (rcaStatus === "done") { setRcaStatus("idle"); setRcaData(null); }
   }, [rag1Model, rag1TopN, rag1SemanticWeight, rag1AGLLM,
       rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM]);
 
@@ -647,11 +599,15 @@ function ABTestPage({ selectedDataset }) {
     if (ragStatus === "done") setSettingsChangedAfterRCA(false);
   }, [ragStatus]);
 
+  useEffect(() => {
+    if (ragStatus === "done") setSettingsChangedAfterRAG(true);
+  }, [rag1Model, rag1TopN, rag1SemanticWeight, rag1AGLLM,
+      rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM]);
+
   const handleRunRCA = async () => {
     setSettingsChangedAfterRCA(false);
     setRcaStatus("running");
     localStorage.removeItem('rcaResults');
-    rcaTabRef.current = window.open(`${window.location.pathname}?view=rca`, '_blank');
     try {
       const res = await fetch(`https://${BACKEND_URL}/run-rca/${jobId}`, { method: "POST" });
       const data = await res.json();
@@ -715,6 +671,7 @@ function ABTestPage({ selectedDataset }) {
       setJobId(data.job_id);
       setQueuePosition(data.position);
       setRagStatus(data.position === 0 ? "running" : "queued");
+      setSettingsChangedAfterRAG(false);
     } catch (error) {
       console.error("Error running RAGs:", error);
       setRagStatus("error");
@@ -732,7 +689,7 @@ function ABTestPage({ selectedDataset }) {
       boxSizing: "border-box",
       overflow: "hidden",
     }}>
-      <style>{`@keyframes arrowBounce { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(10px); opacity: 0.95; } 100% { transform: translateX(0); opacity: 1; } } @keyframes arrowBounceLeft { 0% { transform: scaleX(-1) translateX(0); opacity: 1; } 50% { transform: scaleX(-1) translateX(10px); opacity: 0.95; } 100% { transform: scaleX(-1) translateX(0); opacity: 1; } }`}</style>
+      <style>{`@keyframes arrowBounce { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(10px); opacity: 0.95; } 100% { transform: translateX(0); opacity: 1; } } @keyframes arrowBounceLeft { 0% { transform: scaleX(-1) translateX(0); opacity: 1; } 50% { transform: scaleX(-1) translateX(10px); opacity: 0.95; } 100% { transform: scaleX(-1) translateX(0); opacity: 1; } } @keyframes progressSlide { 0% { left: -40%; } 100% { left: 110%; } } @keyframes dotFade { 0%, 100% { opacity: 0; } 30%, 70% { opacity: 1; } }`}</style>
       {/* ── Top Header Bar ── */}
       <div style={{
         display: "flex",
@@ -812,40 +769,51 @@ function ABTestPage({ selectedDataset }) {
             </div>
           ) : ragStatus === "running" ? (
             <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#800000" }}>
-              Running RAG Pipelines...
+              <span>Running RAG Pipelines</span>
+              <span style={{ display: "inline-block", animation: "dotFade 1.5s ease-in-out infinite 0s" }}>.</span>
+              <span style={{ display: "inline-block", animation: "dotFade 1.5s ease-in-out infinite 0.3s" }}>.</span>
+              <span style={{ display: "inline-block", animation: "dotFade 1.5s ease-in-out infinite 0.6s" }}>.</span>
             </div>
           ) : (
             <>
-              <button
-                onClick={handleRunRAGs}
-                style={{
-                  width: "80%",
-                  background: "#000",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "14px 24px",
-                  fontSize: "1.1rem",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  marginTop: "8px",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {ragStatus === "done" ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounceLeft 1s ease-in-out infinite" }}>➜</span>
-                    <span>Specify <span style={{ color: "#FFFF00" }}>New</span> RAG Settings, for <span style={{ color: "#FFFF00" }}>New Comparisons</span>!</span>
-                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounce 1s ease-in-out infinite" }}>➜</span>
-                  </span>
-                ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounceLeft 1s ease-in-out infinite" }}>➜</span>
-                    <span>Select RAG Settings and Run Comparison</span>
-                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounce 1s ease-in-out infinite" }}>➜</span>
-                  </span>
-                )}
-              </button>
+              {(ragStatus !== "done" || settingsChangedAfterRAG) && (
+                <button
+                  onClick={handleRunRAGs}
+                  style={{
+                    width: "80%",
+                    background: "#000",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "14px 24px",
+                    fontSize: "1.1rem",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    marginTop: "8px",
+                    letterSpacing: "0.04em",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <span style={{
+                    position: "absolute",
+                    top: 0, bottom: 0,
+                    left: "-60%",
+                    width: "50%",
+                    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
+                    animation: "progressSlide 2.2s linear infinite",
+                  }} />
+                  {ragStatus === "done" && settingsChangedAfterRAG ? (
+                    <span>Click to Compare the <span style={{ color: "#FFFF00" }}>New Performance</span></span>
+                  ) : (
+                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                      <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounceLeft 1s ease-in-out infinite" }}>➜</span>
+                      <span>Select RAG Settings and Run Comparison</span>
+                      <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounce 1s ease-in-out infinite" }}>➜</span>
+                    </span>
+                  )}
+                </button>
+              )}
 
               {ragStatus === "done" && (
                 <>
@@ -867,7 +835,7 @@ function ABTestPage({ selectedDataset }) {
                       scoreDefinitions={ANSWER_SCORE_DEFS}
                     />
                   </div>
-                  {!settingsChangedAfterRCA && (
+                  {!settingsChangedAfterRCA && !settingsChangedAfterRAG && rcaStatus !== "done" && (
                     <button
                       style={{
                         marginTop: "66px",
@@ -880,12 +848,63 @@ function ABTestPage({ selectedDataset }) {
                         fontWeight: "bold",
                         cursor: rcaStatus === "running" ? "not-allowed" : "pointer",
                         opacity: rcaStatus === "running" ? 0.7 : 1,
+                        position: "relative",
+                        overflow: "hidden",
                       }}
                       onClick={handleRunRCA}
                       disabled={rcaStatus === "running"}
                     >
-                      {rcaStatus === "running" ? "Running now..." : "🔍 Root Cause Analysis"}
+                      <span style={{
+                        position: "absolute",
+                        top: 0, bottom: 0,
+                        left: "-60%",
+                        width: "50%",
+                        background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
+                        animation: `progressSlide ${rcaStatus === "running" ? "1s" : "2.2s"} linear infinite`,
+                      }} />
+                      {rcaStatus === "running" ? "Running now..." : (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                          🔍 Root Cause Analysis
+                        </span>
+                      )}
                     </button>
+                  )}
+                  {!settingsChangedAfterRCA && !settingsChangedAfterRAG && rcaStatus === "done" && rcaData && (
+                    <div style={{
+                      marginTop: "40px",
+                      width: "80%",
+                      background: "#fafbfc",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      padding: "20px",
+                    }}>
+                      <h3 style={{ color: "#800000", marginBottom: "16px", marginTop: 0 }}>✅ Suggested Action Items</h3>
+                      {rcaData.hasReEvalRows && (
+                        <label style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "10px",
+                          marginBottom: "14px",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                          color: "#c0392b",
+                        }}>
+                          <input
+                            type="checkbox"
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                window.open(`${window.location.pathname}?view=rca`, '_blank');
+                              }
+                            }}
+                            style={{ marginTop: "3px", accentColor: "#800000", width: "16px", height: "16px", flexShrink: 0 }}
+                          />
+                          ⚠️ Re-evaluate flagged records (opens detailed table in new tab)
+                        </label>
+                      )}
+                      {rcaData.rag2Suggestions.map((suggestion, i) => (
+                        <SuggestionItem key={i} text={suggestion} />
+                      ))}
+                    </div>
                   )}
                 </>
               )}
@@ -929,6 +948,29 @@ function AppMain() {
     );
   }
   return <ABTestPage selectedDataset={selectedDataset} />;
+}
+
+function SuggestionItem({ text }) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <label style={{
+      display: "flex",
+      alignItems: "flex-start",
+      gap: "10px",
+      marginBottom: "12px",
+      cursor: "pointer",
+      color: checked ? "#888" : "#333",
+      textDecoration: checked ? "line-through" : "none",
+    }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={() => setChecked(v => !v)}
+        style={{ marginTop: "3px", accentColor: "#800000", width: "16px", height: "16px", flexShrink: 0 }}
+      />
+      {text}
+    </label>
+  );
 }
 
 function App() {
