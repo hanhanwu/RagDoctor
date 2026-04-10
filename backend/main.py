@@ -1,4 +1,5 @@
 import asyncio
+import json
 import traceback
 import os
 import uuid
@@ -57,6 +58,44 @@ _job_to_rca: dict = {}    # job_id -> rca_job_id, prevents duplicate RCA tasks
 DATABASE_URL = os.getenv("DATABASE_URL_PRIVATE")
 DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
 db_url = make_url(DATABASE_URL)
+
+
+# ── RCA DB cache helpers ──────────────────────────────────────────────────────
+
+def _db_fetch_cached_rca(config_hashes: list) -> dict:
+    """Return {config_hash: {rca_records, agg_review}} for any hashes found in DB."""
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT config_hash, rca_records, agg_review FROM existing_rca_output WHERE config_hash = ANY(%s)",
+            (config_hashes,)
+        )
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        conn.close()
+    return {row[0]: {"rca_records": row[1], "agg_review": row[2]} for row in rows}
+
+
+def _db_save_rca(entries: list) -> None:
+    """Save [(config_hash, rca_records, agg_review), ...] — skips on conflict."""
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        for config_hash, rca_records, agg_review in entries:
+            cur.execute(
+                """
+                INSERT INTO existing_rca_output (config_hash, rca_records, agg_review)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (config_hash) DO NOTHING
+                """,
+                (config_hash, json.dumps(rca_records), json.dumps(agg_review))
+            )
+        cur.close()
+    finally:
+        conn.close()
 
 
 def fetch_raw_data(dataset_name: str):
@@ -216,16 +255,13 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
         records_1 = job["eval_records_1"]
         records_2 = job["eval_records_2"]
         config_hashes = job.get("config_hashes", [])
-        if len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]:
-            rca_1 = await asyncio.gather(*[run_rca(r) for r in records_1])
-            rca_2 = rca_1  # same config, reuse results
-        else:
-            rca_1, rca_2 = await asyncio.gather(
-                asyncio.gather(*[run_rca(r) for r in records_1]),
-                asyncio.gather(*[run_rca(r) for r in records_2]),
-            )
         rag1_config = job.get("rag1_config", {})
         rag2_config = job.get("rag2_config", {})
+        same_config = len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]
+
+        def _to_dict(r):
+            return {"root_cause_analysis": r.root_cause_analysis,
+                    "improvement_suggestions": r.improvement_suggestions} if r else None
 
         def build_agg_df(rca_records, cfg):
             df = pd.DataFrame(list(rca_records))
@@ -235,32 +271,79 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
             df['answer_gen_llm']   = cfg.get('answer_gen_llm', '')
             return df[df['needs_re_eval'] == 0]
 
-        agg_df_1 = build_agg_df(rca_1, rag1_config)
-        same_config = len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]
-        agg_df_2 = agg_df_1 if same_config else build_agg_df(rca_2, rag2_config)
+        # ── 1. Check DB cache ─────────────────────────────────────────────────
+        unique_hashes = list(dict.fromkeys(config_hashes))  # deduplicated, order preserved
+        cached = await asyncio.to_thread(_db_fetch_cached_rca, unique_hashes)
+        print(f"RCA cache hit for: {list(cached.keys())}")
 
-        agg_tasks = []
-        if len(agg_df_1) > 0:
-            agg_tasks.append(run_agg_rag_review(agg_df_1, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
-        if not same_config and len(agg_df_2) > 0:
-            agg_tasks.append(run_agg_rag_review(agg_df_2, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
-        agg_results = await asyncio.gather(*agg_tasks)
+        hash_1_cached = config_hashes[0] in cached
+        # If same_config, config 2 is always satisfied once config 1 is resolved
+        hash_2_cached = same_config or config_hashes[1] in cached
 
-        result_iter = iter(agg_results)
-        agg_review_1 = next(result_iter) if len(agg_df_1) > 0 else None
-        agg_review_2 = agg_review_1 if same_config else (next(result_iter) if len(agg_df_2) > 0 else None)
+        # ── 2. Generate missing results ───────────────────────────────────────
+        to_save = []
 
-        def _to_dict(r):
-            return {"root_cause_analysis": r.root_cause_analysis,
-                    "improvement_suggestions": r.improvement_suggestions} if r else None
+        if not hash_1_cached and not hash_2_cached:
+            # Both missing — run concurrently to preserve original performance
+            rca_raw = await asyncio.gather(
+                asyncio.gather(*[run_rca(r) for r in records_1]),
+                asyncio.gather(*[run_rca(r) for r in records_2]),
+            )
+            rca_1, rca_2 = list(rca_raw[0]), list(rca_raw[1])
 
+            agg_df_1 = build_agg_df(rca_1, rag1_config)
+            agg_df_2 = build_agg_df(rca_2, rag2_config)
+            agg_tasks = []
+            if len(agg_df_1) > 0:
+                agg_tasks.append(run_agg_rag_review(agg_df_1, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
+            if len(agg_df_2) > 0:
+                agg_tasks.append(run_agg_rag_review(agg_df_2, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
+            agg_results = list(await asyncio.gather(*agg_tasks))
+            result_iter = iter(agg_results)
+            agg_review_1_dict = _to_dict(next(result_iter) if len(agg_df_1) > 0 else None)
+            agg_review_2_dict = _to_dict(next(result_iter) if len(agg_df_2) > 0 else None)
+            to_save = [
+                (config_hashes[0], rca_1, agg_review_1_dict),
+                (config_hashes[1], rca_2, agg_review_2_dict),
+            ]
+        else:
+            # At least one config is cached — handle individually
+            if hash_1_cached:
+                rca_1 = cached[config_hashes[0]]["rca_records"]
+                agg_review_1_dict = cached[config_hashes[0]]["agg_review"]
+            else:
+                rca_1 = list(await asyncio.gather(*[run_rca(r) for r in records_1]))
+                agg_df_1 = build_agg_df(rca_1, rag1_config)
+                agg_review_1 = await run_agg_rag_review(agg_df_1, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT) if len(agg_df_1) > 0 else None
+                agg_review_1_dict = _to_dict(agg_review_1)
+                to_save.append((config_hashes[0], rca_1, agg_review_1_dict))
+
+            if same_config:
+                rca_2 = rca_1
+                agg_review_2_dict = agg_review_1_dict
+            elif hash_2_cached:
+                rca_2 = cached[config_hashes[1]]["rca_records"]
+                agg_review_2_dict = cached[config_hashes[1]]["agg_review"]
+            else:
+                rca_2 = list(await asyncio.gather(*[run_rca(r) for r in records_2]))
+                agg_df_2 = build_agg_df(rca_2, rag2_config)
+                agg_review_2 = await run_agg_rag_review(agg_df_2, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT) if len(agg_df_2) > 0 else None
+                agg_review_2_dict = _to_dict(agg_review_2)
+                to_save.append((config_hashes[1], rca_2, agg_review_2_dict))
+
+        # ── 3. Persist new results to DB ──────────────────────────────────────
+        if to_save:
+            await asyncio.to_thread(_db_save_rca, to_save)
+            print(f"RCA results saved for config hashes: {[e[0] for e in to_save]}")
+
+        # ── 4. Store in memory for polling ────────────────────────────────────
         _rca_results[rca_job_id] = {
             "status": "done",
             "completed_at": time.time(),
             "rca_records_1": list(rca_1),
             "rca_records_2": list(rca_2),
-            "agg_review_1": _to_dict(agg_review_1),
-            "agg_review_2": _to_dict(agg_review_2),
+            "agg_review_1": agg_review_1_dict,
+            "agg_review_2": agg_review_2_dict,
         }
     except Exception as e:
         traceback.print_exc()
