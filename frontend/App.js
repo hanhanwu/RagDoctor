@@ -233,7 +233,7 @@ function RCAResultsPage({ results }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (!results) return (
-    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#0000ff", fontSize: "1.8rem",
+    <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#800000", fontSize: "1.8rem",
       height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
       ⏳ Analysis is running... this page will update automatically when done.
     </div>
