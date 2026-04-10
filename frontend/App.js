@@ -28,7 +28,7 @@ function RAGSettings({ title, selectedModel, onModelChange,
       overflowY: "auto",
       minWidth: 0
     }}>
-      <h2>{title}</h2>
+      <h2 style={{ color: "#B22222" }}>{title}</h2>
       <div style={{ marginBottom: "16px" }}>
         <label htmlFor={`${title}-embedding-model`} style={{ fontWeight: "bold" }}>
           Embedding Model:
@@ -732,6 +732,7 @@ function ABTestPage({ selectedDataset }) {
       boxSizing: "border-box",
       overflow: "hidden",
     }}>
+      <style>{`@keyframes arrowBounce { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(10px); opacity: 0.95; } 100% { transform: translateX(0); opacity: 1; } } @keyframes arrowBounceLeft { 0% { transform: scaleX(-1) translateX(0); opacity: 1; } 50% { transform: scaleX(-1) translateX(10px); opacity: 0.95; } 100% { transform: scaleX(-1) translateX(0); opacity: 1; } }`}</style>
       {/* ── Top Header Bar ── */}
       <div style={{
         display: "flex",
@@ -781,7 +782,7 @@ function ABTestPage({ selectedDataset }) {
         {/* Left: RAG 1 Settings */}
         <div style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>
           <RAGSettings
-            title="RAG 1 Settings"
+            title="Control Group: RAG 1 Settings"
             selectedModel={rag1Model}
             onModelChange={setRag1Model}
             topN={rag1TopN}
@@ -810,7 +811,7 @@ function ABTestPage({ selectedDataset }) {
                 : `${queuePosition - 1} user(s) waiting ahead of you...`}
             </div>
           ) : ragStatus === "running" ? (
-            <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#0000ff" }}>
+            <div style={{ marginTop: "24px", fontSize: "2rem", fontWeight: "bold", color: "#800000" }}>
               Running RAG Pipelines...
             </div>
           ) : (
@@ -819,7 +820,7 @@ function ABTestPage({ selectedDataset }) {
                 onClick={handleRunRAGs}
                 style={{
                   width: "80%",
-                  background: "#800000",
+                  background: "#000",
                   color: "#fff",
                   border: "none",
                   borderRadius: "6px",
@@ -831,15 +832,25 @@ function ABTestPage({ selectedDataset }) {
                   letterSpacing: "0.04em",
                 }}
               >
-                {ragStatus === "done"
-                  ? <>Specify <span style={{ color: "#FFFF00" }}>New</span> RAG Settings, Click <span style={{ color: "#FFFF00" }}>Compare</span> Again!</>
-                  : "Compare"}
+                {ragStatus === "done" ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounceLeft 1s ease-in-out infinite" }}>➜</span>
+                    <span>Specify <span style={{ color: "#FFFF00" }}>New</span> RAG Settings, for <span style={{ color: "#FFFF00" }}>New Comparisons</span>!</span>
+                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounce 1s ease-in-out infinite" }}>➜</span>
+                  </span>
+                ) : (
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounceLeft 1s ease-in-out infinite" }}>➜</span>
+                    <span>Select RAG Settings and Run Comparison</span>
+                    <span style={{ display: "inline-block", color: "#fff", fontWeight: 900, fontSize: "1.6rem", lineHeight: 1, textShadow: "0 1px 0 rgba(0,0,0,0.25)", animation: "arrowBounce 1s ease-in-out infinite" }}>➜</span>
+                  </span>
+                )}
               </button>
 
               {ragStatus === "done" && (
                 <>
-                  <div style={{ marginTop: "12px", fontSize: "2rem", color: "#9932cc", fontWeight: "bold" }}>
-                    RAG Performance Comparison Shown Below:
+                  <div style={{ marginTop: "36px", fontSize: "1.5rem", color: "#000", fontWeight: "bold" }}>
+                    RAG Performance Comparison:
                   </div>
                   <div style={{ display: "flex", gap: "16px", marginTop: "20px",
                     width: "100%", boxSizing: "border-box", padding: "0 16px", flexWrap: "wrap" }}>
@@ -885,7 +896,7 @@ function ABTestPage({ selectedDataset }) {
         {/* Right: RAG 2 Settings */}
         <div style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>
           <RAGSettings
-            title="RAG 2 Settings"
+            title="Test Group: RAG 2 Settings"
             selectedModel={rag2Model}
             onModelChange={setRag2Model}
             topN={rag2TopN}
