@@ -251,11 +251,18 @@ function RCAResultsPage({ results }) {
       item?.needs_re_eval === 1 && rag2Item?.needs_re_eval === 1
     );
 
+  const REEVAL_KEYS = new Set([
+    "Please review referenced answer",
+    "Please review referenced content",
+    "Please review query quality",
+  ]);
+
   function mergeDistinctSuggestions(rca1, rca2) {
     const seen = new Set();
     const result = [];
     for (const obj of [...(rca1 || []), ...(rca2 || [])]) {
       for (const [k, v] of Object.entries(obj)) {
+        if (!REEVAL_KEYS.has(k)) continue;
         const display = Array.isArray(v) ? v.join("; ") : v;
         const key = `${k}: ${display}`;
         if (!seen.has(key)) { seen.add(key); result.push({ k, display }); }
@@ -266,20 +273,16 @@ function RCAResultsPage({ results }) {
 
   return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
-      height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
+      height: "100vh", overflowY: "auto", overflowX: "auto", boxSizing: "border-box" }}>
       <h1 style={{ color: "#800000", marginBottom: "24px" }}>Root Cause Analysis Results</h1>
 
       {sharedReEvalRows.length > 0 && (
         <div style={{ marginBottom: "40px" }}>
           <h2 style={{ color: "#e74c3c", marginBottom: "16px" }}>⚠ Suggest to re-evaluate records below:</h2>
           <div style={{ position: "relative" }}>
-            <div style={{
-              overflowX: "auto",
-              overflowY: "hidden",
-              width: "100%",
-            }}>
+            <div style={{ width: "100%" }}>
               <table style={{ borderCollapse: "collapse", minWidth: "1500px", fontSize: "0.85rem", width: "100%" }}>
-                <thead>
+                <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                   <tr style={{ background: "#fdf0f0" }}>
                     {[
                       { label: "Row Number",                          minW: "40px"  },
@@ -423,13 +426,14 @@ function DatasetPage({ onDatasetReady }) {
 
       <h1 style={{ fontSize: "5.6rem", fontWeight: 800, color: "#800000", margin: "0 0 32px 0" }}>
         RAG Doctor
+        <span style={{ color: "#C0C0C0", fontSize: "2rem", fontWeight: 600, marginLeft: "12px" }}>Playground</span>
       </h1>
 
       <div style={{ width: "620px", animation: "fadeInDown 0.6s ease both" }}>
         <p style={{ color: "#666", fontSize: "1.1rem", marginBottom: "8px", marginTop: 0 }}>
           <span style={{ display: "inline-block", animation: "slideInText 2.8s ease-in-out infinite" }}>Select a dataset:</span>
         </p>
-      <table style={{ width: "620px", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #800000", borderRadius: "6px" }}>
+      <table style={{ width: "620px", borderCollapse: "collapse", marginBottom: "12px", border: "2px solid #C0C0C0", borderRadius: "6px" }}>
         <thead>
           <tr>
             <th style={{ textAlign: "center", fontWeight: "bold", fontSize: "1.1rem", border: "1px solid #888", padding: "12px", background: "#f3f3f3" }}>
