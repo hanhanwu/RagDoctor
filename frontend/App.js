@@ -258,18 +258,30 @@ function RCAResultsPage({ results }) {
   ]);
 
   function mergeDistinctSuggestions(rca1, rca2) {
-    const seen = new Set();
-    const result = [];
-    for (const obj of [...(rca1 || []), ...(rca2 || [])]) {
-      for (const [k, v] of Object.entries(obj)) {
-        if (!REEVAL_KEYS.has(k)) continue;
-        const display = Array.isArray(v) ? v.join("; ") : v;
-        const key = `${k}: ${display}`;
-        if (!seen.has(key)) { seen.add(key); result.push({ k, display }); }
+    // For each REEVAL key, gather values from both RCA results and merge into
+    // a single display entry. If values are identical, show once; otherwise
+    // concatenate unique values together.
+    const merged = [];
+    for (const key of REEVAL_KEYS) {
+      const values = new Set();
+      for (const obj of [...(rca1 || []), ...(rca2 || [])]) {
+        if (!obj || !(key in obj)) continue;
+        const v = obj[key];
+        if (Array.isArray(v)) {
+          for (const vv of v) values.add(String(vv).trim());
+        } else {
+          values.add(String(v).trim());
+        }
       }
+      if (values.size === 0) continue;
+      const displays = Array.from(values).filter(s => s.length > 0);
+      const display = displays.length <= 1 ? displays[0] : displays.join("; ");
+      merged.push({ k: key, display, values: displays });
     }
-    return result;
+    return merged;
   }
+
+  const [selectedQueryVariant, setSelectedQueryVariant] = useState({});
 
   return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
@@ -310,6 +322,7 @@ function RCAResultsPage({ results }) {
                     const suggestions = mergeDistinctSuggestions(
                       item.root_cause_analysis, rag2Item.root_cause_analysis
                     );
+                    
                     const cellStyle = {
                       border: "1px solid #ccc", padding: "8px 12px",
                       verticalAlign: "top", wordBreak: "break-word",
@@ -351,11 +364,37 @@ function RCAResultsPage({ results }) {
                           </span>
                         </td>
                         <td style={cellStyle}>
-                          {suggestions.map(({ k, display }, j) => (
-                            <div key={j} style={{ marginBottom: "4px" }}>
-                              <em style={{ color: "#800000" }}>{k}:</em> {display}
-                            </div>
-                          ))}
+                          {suggestions.map(({ k, display, values }, j) => {
+                            if (k === "Please review query quality") {
+                              const opts = values || (display ? [display] : []);
+                              return (
+                                <div key={j} style={{ marginBottom: "4px" }}>
+                                  <em style={{ color: "#800000" }}>{k}:</em>
+                                  <div style={{ marginTop: "6px" }}>
+                                    {opts.map((opt, idxOpt) => (
+                                      <label key={idxOpt} style={{ display: "block", cursor: "pointer" }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedQueryVariant[i] === opt}
+                                          onChange={() => setSelectedQueryVariant(prev => {
+                                            const cur = prev[i] === opt ? undefined : opt;
+                                            return { ...prev, [i]: cur };
+                                          })}
+                                          style={{ marginRight: "8px" }}
+                                        />
+                                        {opt}
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={j} style={{ marginBottom: "4px" }}>
+                                <em style={{ color: "#800000" }}>{k}:</em> {display}
+                              </div>
+                            );
+                          })}
                         </td>
                       </tr>
                     );
