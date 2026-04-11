@@ -249,19 +249,17 @@ review_query_quality_template: |
 
 # ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
 query_expansion_template: |
-    The USER_QUERY is ambiguous. Rewrite it into 1 to 3 clearer, specific query variants.
+    The USER_QUERY is ambiguous. Rewrite it into 1 and only 1 query variant.
 
     ### INSTRUCTIONS ###
-    - Each variant should resolve ambiguity by assuming a distinct plausible intent.
-    - Keep each variant concise and self-contained.
-    - Generate only 1 to 3 variants, less tokens is better if they can cover the ambiguity.
+    - Generate one and only one query variant, choose the best query variant you can.
+    - This variant should resolve ambiguity by assuming a distinct plausible intent.
+    - Keep the variant concise and self-contained.
+    - Less tokens is better if it can cover the ambiguity.
 
     ### EXAMPLE OUTPUT ###
         {{
-            "query_variants": [
-                "What was Amazon's net revenue in fiscal year 2022?",
-                "What were Amazon's total operating expenses in 2022?"
-            ]
+            "query_variant": "What was Amazon's net revenue in fiscal year 2022?"
         }}
 
     Here is the USER_QUERY:

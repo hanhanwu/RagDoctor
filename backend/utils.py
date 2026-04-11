@@ -594,7 +594,7 @@ async def review_query_quality_async(llm, user_query):
 
 # ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
 class QueryExpansion(BaseModel):
-    query_variants: list[str] = Field(description="A list of 1 to 3 clearer, specific query variants.")
+    query_variant: list[str] = Field(description="one and only one query variant.")
 
 
 async def expand_query_async(llm, user_query):
@@ -609,7 +609,7 @@ async def expand_query_async(llm, user_query):
     result = await _invoke_with_retry(chain, {
         "user_query": user_query
     })
-    return result.query_variants
+    return result.query_variant
 # ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
 
 
