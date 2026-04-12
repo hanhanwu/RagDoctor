@@ -731,6 +731,7 @@ function ABTestPage({ selectedDataset }) {
   const [pendingEdits, setPendingEdits] = useState(null);
   // pendingSwap: set by Page 3 Submit; consumed only when user clicks "Run New A/B Test"
   const [pendingSwap, setPendingSwap] = useState(null); // { controlGroup, edits } | null
+  const [hasRunNewABTest, setHasRunNewABTest] = useState(false);
 
 
   const ciResult = useMemo(() => {
@@ -802,6 +803,7 @@ function ABTestPage({ selectedDataset }) {
     setRag2SemanticWeight(newCtrlSemW); setRag2AGLLM(newCtrlAGLLM);
 
     const edits = pendingSwap?.edits ?? [];
+    setHasRunNewABTest(true);
     setPendingSwap(null);
     setPendingEdits(null);
     setEvalResults({ rag1: null, rag2: null });
@@ -1059,7 +1061,7 @@ function ABTestPage({ selectedDataset }) {
                   📝 Running with updated references from re-evaluation list
                 </div>
               )}
-              {(ragStatus !== "done" || settingsChangedAfterRAG) && (
+              {((!hasRunNewABTest && ragStatus !== "done") || settingsChangedAfterRAG) && (
                 <button
                   onClick={handleRunRAGs}
                   style={{

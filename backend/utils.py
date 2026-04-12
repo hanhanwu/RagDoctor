@@ -212,13 +212,16 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
         )
         base_row = cur.fetchone()
         if base_row:
+            # base_row[-1] (output) may be returned as a dict by psycopg2 for JSON/JSONB columns;
+            # re-serialize it so psycopg2 can insert it as a string.
+            base_row_serialized = (*base_row[:-1], json.dumps(base_row[-1]) if isinstance(base_row[-1], (dict, list)) else base_row[-1])
             cur.execute("""
                 INSERT INTO existing_rag_output
                     (config_hash, dataset, embedding_model, top_n_retrieval,
                      semantic_weight, answer_gen_llm, output)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (config_hash) DO NOTHING
-            """, (config_hash, *base_row))
+            """, (config_hash, *base_row_serialized))
             conn.commit()
             cur.close()
             conn.close()
