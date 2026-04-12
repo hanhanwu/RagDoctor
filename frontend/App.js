@@ -286,11 +286,13 @@ function RCAResultsPage({ results }) {
     </div>
   );
 
-  const sharedReEvalRows = results.rag1
-    .map((item, i) => ({ item, rag2Item: results.rag2[i], i }))
-    .filter(({ item, rag2Item }) =>
-      item?.needs_re_eval === 1 && rag2Item?.needs_re_eval === 1
-    );
+  const controlGroup = results.controlGroup || "rag2";
+  const controlItems = results[controlGroup];
+  const controlLabel = controlGroup === "rag1" ? "RAG 1" : "RAG 2";
+
+  const reEvalRows = controlItems
+    .map((item, i) => ({ item, i }))
+    .filter(({ item }) => item?.needs_re_eval === 1);
 
   const REEVAL_KEYS = new Set([
     "Please review referenced answer",
@@ -298,14 +300,11 @@ function RCAResultsPage({ results }) {
     "Please review query quality",
   ]);
 
-  function mergeDistinctSuggestions(rca1, rca2) {
-    // For each REEVAL key, gather values from both RCA results and merge into
-    // a single display entry. If values are identical, show once; otherwise
-    // concatenate unique values together.
+  function getControlSuggestions(rca) {
     const merged = [];
     for (const key of REEVAL_KEYS) {
       const values = new Set();
-      for (const obj of [...(rca1 || []), ...(rca2 || [])]) {
+      for (const obj of (rca || [])) {
         if (!obj || !(key in obj)) continue;
         const v = obj[key];
         if (Array.isArray(v)) {
@@ -329,24 +328,24 @@ function RCAResultsPage({ results }) {
       height: "100vh", overflowY: "auto", overflowX: "auto", boxSizing: "border-box" }}>
       <h1 style={{ color: "#800000", marginBottom: "24px" }}>Re-Evaluation List</h1>
 
-      {sharedReEvalRows.length > 0 && (
+      {reEvalRows.length > 0 && (
         <div style={{ marginBottom: "40px" }}>
           <h2 style={{ color: "#e74c3c", marginBottom: "16px" }}>⚠ Suggest to re-evaluate records below:</h2>
           <div style={{ position: "relative" }}>
             <div style={{ width: "100%" }}>
-              <table style={{ borderCollapse: "collapse", minWidth: "1500px", fontSize: "0.85rem", width: "100%" }}>
+              <table style={{ borderCollapse: "collapse", minWidth: "1200px", fontSize: "0.85rem", width: "100%" }}>
                 <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                   <tr style={{ background: "#fdf0f0" }}>
                     {[
-                      { label: "Row Number",                          minW: "40px"  },
-                      { label: "Query",                               minW: "180px" },
-                      { label: "Referenced Content",                  minW: "200px" },
-                      { label: "Retrieved Content",                   minW: "200px" },
-                      { label: "Referenced Answer",                   minW: "180px" },
-                      { label: "AI's Answer\nRAG1 / RAG2",            minW: "180px" },
-                      { label: "Retrieval Quality Score\nRAG1 | RAG2", minW: "160px" },
-                      { label: "Answer Quality Score\nRAG1 | RAG2",   minW: "160px" },
-                      { label: "Suggestions",                         minW: "260px" },
+                      { label: "Row Number",                               minW: "40px"  },
+                      { label: "Query",                                    minW: "180px" },
+                      { label: "Referenced Content",                       minW: "200px" },
+                      { label: "Retrieved Content",                        minW: "200px" },
+                      { label: "Referenced Answer",                        minW: "180px" },
+                      { label: `AI's Answer\n(${controlLabel})`,           minW: "180px" },
+                      { label: "Retrieval Quality Score",                  minW: "120px" },
+                      { label: "Answer Quality Score",                     minW: "120px" },
+                      { label: "Suggestions",                              minW: "260px" },
                     ].map(({ label, minW }) => (
                       <th key={label} style={{
                         border: "1px solid #ccc", padding: "8px 12px", textAlign: "center",
@@ -359,11 +358,9 @@ function RCAResultsPage({ results }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {sharedReEvalRows.map(({ item, rag2Item, i }) => {
-                    const suggestions = mergeDistinctSuggestions(
-                      item.root_cause_analysis, rag2Item.root_cause_analysis
-                    );
-                    
+                  {reEvalRows.map(({ item, i }) => {
+                    const suggestions = getControlSuggestions(item.root_cause_analysis);
+
                     const cellStyle = {
                       border: "1px solid #ccc", padding: "8px 12px",
                       verticalAlign: "top", wordBreak: "break-word",
@@ -376,32 +373,15 @@ function RCAResultsPage({ results }) {
                         <ExpandableCell text={item.context} style={cellStyle} />
                         <ExpandableCell text={item.retrieved_content} style={cellStyle} />
                         <ExpandableCell text={item.referenced_answer ?? item.expected_answer} style={cellStyle} />
-                        <td style={{ ...cellStyle, padding: 0 }}>
-                          <div style={{ padding: "8px 12px", borderBottom: "1px solid #e0e0e0" }}>
-                            <span style={{ fontSize: "0.75rem", color: "#888", fontWeight: "bold" }}>RAG1</span><br />
-                            <ExpandableText text={item.ai_answer} />
-                          </div>
-                          <div style={{ padding: "8px 6px" }}>
-                            <span style={{ fontSize: "0.75rem", color: "#888", fontWeight: "bold" }}>RAG2</span><br />
-                            <ExpandableText text={rag2Item.ai_answer} />
-                          </div>
-                        </td>
+                        <td style={cellStyle}><ExpandableText text={item.ai_answer} /></td>
                         <td style={{ ...cellStyle, textAlign: "center" }}>
                           <span style={{ color: SCORE_COLORS[String(item.new_retrieval_quality_score)] || "#333" }}>
                             {item.new_retrieval_quality_score}
-                          </span>
-                          {" | "}
-                          <span style={{ color: SCORE_COLORS[String(rag2Item.new_retrieval_quality_score)] || "#333" }}>
-                            {rag2Item.new_retrieval_quality_score}
                           </span>
                         </td>
                         <td style={{ ...cellStyle, textAlign: "center" }}>
                           <span style={{ color: SCORE_COLORS[String(item.new_answer_quality_score)] || "#333" }}>
                             {item.new_answer_quality_score}
-                          </span>
-                          {" | "}
-                          <span style={{ color: SCORE_COLORS[String(rag2Item.new_answer_quality_score)] || "#333" }}>
-                            {rag2Item.new_answer_quality_score}
                           </span>
                         </td>
                         <td style={cellStyle}>
@@ -660,6 +640,9 @@ function ABTestPage({ selectedDataset }) {
     return computeAQCI(evalResults.rag1.eval_records, evalResults.rag2.eval_records);
   }, [evalResults]);
 
+  const ciResultRef = useRef(null);
+  ciResultRef.current = ciResult;
+
   useEffect(() => {
     if (!rcaJobId) return;
     rcaPollRef.current = setInterval(async () => {
@@ -667,18 +650,20 @@ function ABTestPage({ selectedDataset }) {
         const res = await fetch(`https://${BACKEND_URL}/rca-status/${rcaJobId}`);
         const data = await res.json();
         if (data.status === "done") {
+          const controlGroup = ciResultRef.current?.rag2Better === false ? "rag1" : "rag2";
           const results = {
             rag1: data.rca_records_1,
             rag2: data.rca_records_2,
             agg_review_1: data.agg_review_1,
             agg_review_2: data.agg_review_2,
+            controlGroup,
           };
           localStorage.setItem('rcaResults', JSON.stringify(results));
-          const hasReEvalRows = results.rag1.some((item, i) =>
-            item?.needs_re_eval === 1 && results.rag2[i]?.needs_re_eval === 1
-          );
-          const rag2Suggestions = parseSuggestions(results.agg_review_2?.improvement_suggestions);
-          setRcaData({ hasReEvalRows, rag2Suggestions });
+          const controlItems = results[controlGroup];
+          const controlAggReview = controlGroup === "rag1" ? results.agg_review_1 : results.agg_review_2;
+          const hasReEvalRows = controlItems.some(item => item?.needs_re_eval === 1);
+          const controlSuggestions = parseSuggestions(controlAggReview?.improvement_suggestions);
+          setRcaData({ hasReEvalRows, controlSuggestions });
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
         } else if (data.status === "error") {
@@ -1016,7 +1001,7 @@ function ABTestPage({ selectedDataset }) {
                               ⚠️ Re-evaluate flagged records (opens detailed table in new tab)
                             </label>
                           )}
-                          {rcaData.rag2Suggestions.map((suggestion, i) => (
+                          {rcaData.controlSuggestions.map((suggestion, i) => (
                             <SuggestionItem
                               key={i}
                               text={suggestion}
