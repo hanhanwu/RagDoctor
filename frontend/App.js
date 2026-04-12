@@ -404,7 +404,7 @@ function RCAResultsPage({ results }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: "4px" }}>
           <div style={{ flex: 1 }}>
             {isEdited && (
-              <div style={{ fontSize: "0.7rem", color: "#800000", fontWeight: "bold", marginBottom: "2px" }}>
+              <div style={{ fontSize: "0.7rem", color: "#008000", fontWeight: "bold", marginBottom: "2px" }}>
                 ✏ Edited
               </div>
             )}
