@@ -327,7 +327,7 @@ function RCAResultsPage({ results }) {
   return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
       height: "100vh", overflowY: "auto", overflowX: "auto", boxSizing: "border-box" }}>
-      <h1 style={{ color: "#800000", marginBottom: "24px" }}>Root Cause Analysis Results</h1>
+      <h1 style={{ color: "#800000", marginBottom: "24px" }}>Re-Evaluation List</h1>
 
       {sharedReEvalRows.length > 0 && (
         <div style={{ marginBottom: "40px" }}>
@@ -447,6 +447,23 @@ function RCAResultsPage({ results }) {
         </div>
       )}
 
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "32px" }}>
+        <button
+          onClick={() => window.close()}
+          style={{
+            background: "#800000",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            padding: "12px 36px",
+            fontSize: "1rem",
+            fontWeight: "bold",
+            cursor: "pointer",
+          }}
+        >
+          Submit
+        </button>
+      </div>
     </div>
   );
 }
@@ -636,6 +653,7 @@ function ABTestPage({ selectedDataset }) {
   const [settingsChangedAfterRCA, setSettingsChangedAfterRCA] = useState(false);
   const [rcaData, setRcaData] = useState(null);
   const [settingsChangedAfterRAG, setSettingsChangedAfterRAG] = useState(false);
+  const [checkedSuggestionsCount, setCheckedSuggestionsCount] = useState(0);
 
   const ciResult = useMemo(() => {
     if (!evalResults.rag1?.eval_records || !evalResults.rag2?.eval_records) return null;
@@ -687,6 +705,10 @@ function ABTestPage({ selectedDataset }) {
   useEffect(() => {
     if (ragStatus === "done") setSettingsChangedAfterRCA(false);
   }, [ragStatus]);
+
+  useEffect(() => {
+    setCheckedSuggestionsCount(0);
+  }, [rcaData]);
 
   useEffect(() => {
     if (ragStatus === "done") setSettingsChangedAfterRAG(true);
@@ -984,6 +1006,7 @@ function ABTestPage({ selectedDataset }) {
                               <input
                                 type="checkbox"
                                 onChange={(e) => {
+                                  setCheckedSuggestionsCount(prev => prev + (e.target.checked ? 1 : -1));
                                   if (e.target.checked) {
                                     window.open(`${window.location.pathname}?view=rca`, '_blank');
                                   }
@@ -994,7 +1017,11 @@ function ABTestPage({ selectedDataset }) {
                             </label>
                           )}
                           {rcaData.rag2Suggestions.map((suggestion, i) => (
-                            <SuggestionItem key={i} text={suggestion} />
+                            <SuggestionItem
+                              key={i}
+                              text={suggestion}
+                              onCheckedChange={(isChecked) => setCheckedSuggestionsCount(prev => prev + (isChecked ? 1 : -1))}
+                            />
                           ))}
                         </div>
                         {/* Vertical dashed divider */}
@@ -1013,6 +1040,34 @@ function ABTestPage({ selectedDataset }) {
                             <div style={{ fontWeight: "bold", color: "#800000" }}>
                               New Control Group: {ciResult.rag2Better ? "RAG 2" : "RAG 1"}
                             </div>
+                            {checkedSuggestionsCount > 0 && (
+                              <button
+                                onClick={handleRunRAGs}
+                                style={{
+                                  background: "#000",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  padding: "8px 0px",
+                                  fontSize: "0.95rem",
+                                  fontWeight: "bold",
+                                  cursor: "pointer",
+                                  letterSpacing: "0.04em",
+                                  position: "relative",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <span style={{
+                                  position: "absolute",
+                                  top: 0, bottom: 0,
+                                  left: "-60%",
+                                  width: "30%",
+                                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
+                                  animation: "progressSlide 2.2s linear infinite",
+                                }} />
+                                Run New A/B Test
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1062,7 +1117,7 @@ function AppMain() {
   return <ABTestPage selectedDataset={selectedDataset} />;
 }
 
-function SuggestionItem({ text }) {
+function SuggestionItem({ text, onCheckedChange }) {
   const [checked, setChecked] = useState(false);
   return (
     <label style={{
@@ -1077,7 +1132,7 @@ function SuggestionItem({ text }) {
       <input
         type="checkbox"
         checked={checked}
-        onChange={() => setChecked(v => !v)}
+        onChange={() => { const next = !checked; setChecked(next); if (onCheckedChange) onCheckedChange(next); }}
         style={{ marginTop: "3px", accentColor: "#800000", width: "16px", height: "16px", flexShrink: 0 }}
       />
       {text}
