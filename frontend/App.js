@@ -322,6 +322,99 @@ function RCAResultsPage({ results }) {
   }
 
   const [selectedQueryVariant, setSelectedQueryVariant] = useState({});
+  // editState: { [rowIndex]: { context?: string, referenced_answer?: string } }
+  const [editState, setEditState] = useState({});
+  // draftState: { [rowIndex]: { context?: string, referenced_answer?: string } } — in-progress edits
+  const [draftState, setDraftState] = useState({});
+  // which cell is open for editing: { rowIndex, field } | null
+  const [editingCell, setEditingCell] = useState(null);
+
+  function getDisplayValue(i, field, item) {
+    if (editState[i]?.[field] !== undefined) return editState[i][field];
+    if (field === "context") return item.context ?? "";
+    return item.referenced_answer ?? item.expected_answer ?? "";
+  }
+
+  function openEdit(i, field, item) {
+    setDraftState(prev => ({
+      ...prev,
+      [i]: { ...prev[i], [field]: getDisplayValue(i, field, item) },
+    }));
+    setEditingCell({ i, field });
+  }
+
+  function confirmEdit(i, field) {
+    const val = draftState[i]?.[field];
+    if (val !== undefined) {
+      setEditState(prev => ({
+        ...prev,
+        [i]: { ...prev[i], [field]: val },
+      }));
+    }
+    setEditingCell(null);
+  }
+
+  function handleSubmit() {
+    const edits = Object.entries(editState)
+      .map(([idx, fields]) => ({ index: Number(idx), ...fields }))
+      .filter(e => e.context !== undefined || e.referenced_answer !== undefined);
+    localStorage.setItem('rcaEdits', JSON.stringify({
+      controlGroup,
+      edits,
+    }));
+    window.close();
+  }
+
+  const editBtnStyle = {
+    marginLeft: "8px", fontSize: "0.7rem", padding: "2px 8px",
+    background: "#f5f5f5", border: "1px solid #bbb", borderRadius: "4px",
+    cursor: "pointer", color: "#555", fontWeight: "bold", flexShrink: 0,
+  };
+  const confirmBtnStyle = {
+    marginTop: "6px", fontSize: "0.75rem", padding: "3px 12px",
+    background: "#800000", border: "none", borderRadius: "4px",
+    cursor: "pointer", color: "#fff", fontWeight: "bold",
+  };
+
+  function EditableCell({ i, field, item, style }) {
+    const isEditing = editingCell?.i === i && editingCell?.field === field;
+    const displayVal = getDisplayValue(i, field, item);
+    const isEdited = editState[i]?.[field] !== undefined;
+    if (isEditing) {
+      return (
+        <td style={style}>
+          <textarea
+            value={draftState[i]?.[field] ?? ""}
+            onChange={e => setDraftState(prev => ({
+              ...prev,
+              [i]: { ...prev[i], [field]: e.target.value },
+            }))}
+            style={{ width: "100%", minHeight: "80px", fontSize: "0.85rem",
+              boxSizing: "border-box", padding: "4px", borderColor: "#800000" }}
+            autoFocus
+          />
+          <button style={confirmBtnStyle} onClick={() => confirmEdit(i, field)}>
+            Confirm
+          </button>
+        </td>
+      );
+    }
+    return (
+      <td style={style}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "4px" }}>
+          <div style={{ flex: 1 }}>
+            {isEdited && (
+              <div style={{ fontSize: "0.7rem", color: "#800000", fontWeight: "bold", marginBottom: "2px" }}>
+                ✏ Edited
+              </div>
+            )}
+            <ExpandableText text={displayVal} />
+          </div>
+          <button style={editBtnStyle} onClick={() => openEdit(i, field, item)}>Edit</button>
+        </div>
+      </td>
+    );
+  }
 
   return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif",
@@ -370,9 +463,9 @@ function RCAResultsPage({ results }) {
                       <tr key={i}>
                         <td style={cellStyle}>{i + 1}</td>
                         <td style={cellStyle}>{item.query}</td>
-                        <ExpandableCell text={item.context} style={cellStyle} />
+                        <EditableCell i={i} field="context" item={item} style={cellStyle} />
                         <ExpandableCell text={item.retrieved_content} style={cellStyle} />
-                        <ExpandableCell text={item.referenced_answer ?? item.expected_answer} style={cellStyle} />
+                        <EditableCell i={i} field="referenced_answer" item={item} style={cellStyle} />
                         <td style={cellStyle}><ExpandableText text={item.ai_answer} /></td>
                         <td style={{ ...cellStyle, textAlign: "center" }}>
                           <span style={{ color: SCORE_COLORS[String(item.new_retrieval_quality_score)] || "#333" }}>
@@ -429,7 +522,7 @@ function RCAResultsPage({ results }) {
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "32px" }}>
         <button
-          onClick={() => window.close()}
+          onClick={handleSubmit}
           style={{
             background: "#800000",
             color: "#fff",
@@ -634,6 +727,11 @@ function ABTestPage({ selectedDataset }) {
   const [rcaData, setRcaData] = useState(null);
   const [settingsChangedAfterRAG, setSettingsChangedAfterRAG] = useState(false);
   const [checkedSuggestionsCount, setCheckedSuggestionsCount] = useState(0);
+  // pendingEdits: { edits: [{index, context?, referenced_answer?}] } | null
+  const [pendingEdits, setPendingEdits] = useState(null);
+  // pendingSwap: set by Page 3 Submit; consumed only when user clicks "Run New A/B Test"
+  const [pendingSwap, setPendingSwap] = useState(null); // { controlGroup, edits } | null
+
 
   const ciResult = useMemo(() => {
     if (!evalResults.rag1?.eval_records || !evalResults.rag2?.eval_records) return null;
@@ -642,6 +740,81 @@ function ABTestPage({ selectedDataset }) {
 
   const ciResultRef = useRef(null);
   ciResultRef.current = ciResult;
+
+  // ── Listen for rcaEdits written by the RCA tab on Submit ─────────────────────
+  useEffect(() => {
+    function onStorage(e) {
+      if (e.key !== 'rcaEdits') return;
+      const raw = e.newValue;
+      if (!raw) return;
+      const { controlGroup, edits } = JSON.parse(raw);
+      localStorage.removeItem('rcaEdits');
+      if (edits?.length > 0) {
+        // Store for later — settings only update when user clicks "Run New A/B Test"
+        setPendingSwap({ controlGroup, edits });
+      }
+    }
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // ── Fire run directly with explicit values (bypasses stale state) ────────────
+  const _runRAGsDirectly = async (model, topN, semW, agLLM, edits) => {
+    try {
+      const kwW = parseFloat((1 - semW).toFixed(2));
+      const ragConfig = {
+        embedding_model: model, top_n: topN,
+        semantic_weight: semW, keyword_weight: kwW, answer_gen_llm: agLLM,
+      };
+      const body = { dataset: selectedDataset, rag1: ragConfig, rag2: ragConfig };
+      if (edits?.length) body.data_overrides_rag2 = edits;
+      const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      setJobId(data.job_id);
+      setQueuePosition(data.position);
+      setRagStatus(data.position === 0 ? "running" : "queued");
+    } catch (error) {
+      console.error("Error running RAGs:", error);
+      setRagStatus("error");
+    }
+  };
+
+  // ── Apply pane swap + edits + immediately run — called by "Run New A/B Test" ──
+  const handleNewABTest = () => {
+    const controlGroup = pendingSwap?.controlGroup
+      ?? (ciResult?.rag2Better ? 'rag2' : 'rag1');
+    const controlIsRag1 = controlGroup === 'rag1';
+
+    // New control group's settings become the base for BOTH panes
+    const newCtrlModel = controlIsRag1 ? rag1Model : rag2Model;
+    const newCtrlTopN  = controlIsRag1 ? rag1TopN  : rag2TopN;
+    const newCtrlSemW  = controlIsRag1 ? rag1SemanticWeight : rag2SemanticWeight;
+    const newCtrlAGLLM = controlIsRag1 ? rag1AGLLM : rag2AGLLM;
+
+    // Left pane = new control group; right pane = same config + overrides applied at eval
+    setRag1Model(newCtrlModel); setRag1TopN(newCtrlTopN);
+    setRag1SemanticWeight(newCtrlSemW); setRag1AGLLM(newCtrlAGLLM);
+    setRag2Model(newCtrlModel); setRag2TopN(newCtrlTopN);
+    setRag2SemanticWeight(newCtrlSemW); setRag2AGLLM(newCtrlAGLLM);
+
+    const edits = pendingSwap?.edits ?? [];
+    setPendingSwap(null);
+    setPendingEdits(null);
+    setEvalResults({ rag1: null, rag2: null });
+    setJobId(null);
+    setRcaStatus('idle');
+    setRcaData(null);
+    setSettingsChangedAfterRAG(false);
+    setSettingsChangedAfterRCA(false);
+    setRagStatus('running'); // show spinner immediately — no Compare button flash
+
+    // Pass computed values directly since React state hasn't settled yet
+    _runRAGsDirectly(newCtrlModel, newCtrlTopN, newCtrlSemW, newCtrlAGLLM, edits);
+  };
 
   useEffect(() => {
     if (!rcaJobId) return;
@@ -742,32 +915,37 @@ function ABTestPage({ selectedDataset }) {
 
   const handleRunRAGs = async () => {
     try {
+      const body = {
+        dataset: selectedDataset,
+        rag1: {
+          embedding_model: rag1Model,
+          top_n: rag1TopN,
+          semantic_weight: rag1SemanticWeight,
+          keyword_weight: parseFloat((1 - rag1SemanticWeight).toFixed(2)),
+          answer_gen_llm: rag1AGLLM,
+        },
+        rag2: {
+          embedding_model: rag2Model,
+          top_n: rag2TopN,
+          semantic_weight: rag2SemanticWeight,
+          keyword_weight: parseFloat((1 - rag2SemanticWeight).toFixed(2)),
+          answer_gen_llm: rag2AGLLM,
+        },
+      };
+      if (pendingEdits?.edits?.length) {
+        body.data_overrides_rag2 = pendingEdits.edits;
+      }
       const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dataset: selectedDataset,
-          rag1: {
-            embedding_model: rag1Model,
-            top_n: rag1TopN,
-            semantic_weight: rag1SemanticWeight,
-            keyword_weight: parseFloat((1 - rag1SemanticWeight).toFixed(2)),
-            answer_gen_llm: rag1AGLLM,
-          },
-          rag2: {
-            embedding_model: rag2Model,
-            top_n: rag2TopN,
-            semantic_weight: rag2SemanticWeight,
-            keyword_weight: parseFloat((1 - rag2SemanticWeight).toFixed(2)),
-            answer_gen_llm: rag2AGLLM,
-          },
-        }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
       setJobId(data.job_id);
       setQueuePosition(data.position);
       setRagStatus(data.position === 0 ? "running" : "queued");
       setSettingsChangedAfterRAG(false);
+      setPendingEdits(null);  // consumed
     } catch (error) {
       console.error("Error running RAGs:", error);
       setRagStatus("error");
@@ -872,6 +1050,15 @@ function ABTestPage({ selectedDataset }) {
             </div>
           ) : (
             <>
+              {pendingEdits?.edits?.length > 0 && (
+                <div style={{
+                  width: "80%", marginBottom: "10px", padding: "10px 16px",
+                  background: "#fff8e1", border: "1px solid #f9a825", borderRadius: "6px",
+                  fontSize: "0.95rem", color: "#5d4037", textAlign: "center",
+                }}>
+                  📝 Running with updated references from re-evaluation list
+                </div>
+              )}
               {(ragStatus !== "done" || settingsChangedAfterRAG) && (
                 <button
                   onClick={handleRunRAGs}
@@ -1025,9 +1212,18 @@ function ABTestPage({ selectedDataset }) {
                             <div style={{ fontWeight: "bold", color: "#800000" }}>
                               New Control Group: {ciResult.rag2Better ? "RAG 2" : "RAG 1"}
                             </div>
-                            {checkedSuggestionsCount > 0 && (
+                            {pendingSwap && (
+                              <div style={{
+                                padding: "8px 10px", borderRadius: "6px",
+                                background: "#fff8e1", border: "1px solid #f9a825",
+                                fontSize: "0.85rem", color: "#5d4037", lineHeight: 1.4,
+                              }}>
+                                📝 Re-evaluation edits ready. Click &quot;Run New A/B Test&quot; to apply.
+                              </div>
+                            )}
+                            {(checkedSuggestionsCount > 0 || pendingSwap) && (
                               <button
-                                onClick={handleRunRAGs}
+                                onClick={handleNewABTest}
                                 style={{
                                   background: "#000",
                                   color: "#fff",

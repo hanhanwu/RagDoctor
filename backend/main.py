@@ -12,6 +12,7 @@ from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import make_url
+from typing import Optional
 
 from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_review, FINANCIAL_RAG_SYSTEM_PROMPT, rca_llm
 
@@ -38,6 +39,11 @@ class RAGConfig(BaseModel):
     keyword_weight: float
     answer_gen_llm: str
 
+class DataOverride(BaseModel):
+    index: int
+    context: Optional[str] = None
+    referenced_answer: Optional[str] = None
+
 class PreprocessRequest(BaseModel):
     dataset_name: str
 
@@ -45,6 +51,7 @@ class DatasetRequest(BaseModel):
     dataset: str
     rag1: RAGConfig
     rag2: RAGConfig
+    data_overrides_rag2: Optional[list[DataOverride]] = None
 
 preprocessing_status = {"status": "idle", "message": ""}
 rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
@@ -193,10 +200,15 @@ async def process_job_queue():
         _job_results[job_id] = {"status": "running"}
         try:
             cfgs = [request.rag1, request.rag2]
+            overrides_rag2 = request.data_overrides_rag2 or []
             config_hashes = await run_all_in_processes(
-                cfgs, snapshot['rag_lst'], snapshot['documents'], db_url, request.dataset
+                cfgs, snapshot['rag_lst'], snapshot['documents'], db_url, request.dataset,
+                data_overrides_rag2=overrides_rag2
             )
-            eval_results = await run_auto_eval(config_hashes, db_url, snapshot['rag_df'])
+            eval_results = await run_auto_eval(
+                config_hashes, db_url, snapshot['rag_df'],
+                data_overrides_rag2=overrides_rag2
+            )
             _job_results[job_id] = {
                 "status": "done",
                 "completed_at": time.time(),
