@@ -451,7 +451,7 @@ async def get_retrieval_quality_output_async(input_df, llm, rq_prompt_template, 
     output_lst = await asyncio.gather(*tasks)
     output_df = pd.DataFrame(output_lst)
     return output_df
-# ------------------------------------ QUERY QUALITY ------------------------------------ #
+# ------------------------------------ RETRIEVAL QUALITY ------------------------------------ #
 
 
 # ------------------------------------ ANSWER QUALITY ------------------------------------ #
