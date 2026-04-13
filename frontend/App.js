@@ -365,8 +365,8 @@ function RCAResultsPage({ results, dataset }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dataset_name: dataset, edits }),
         });
+        localStorage.setItem('rcaSubmitted', JSON.stringify({ controlGroup }));
       }
-      localStorage.setItem('rcaSubmitted', JSON.stringify({ controlGroup }));
       window.close();
     };
     doSubmit();
