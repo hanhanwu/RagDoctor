@@ -838,19 +838,11 @@ function ABTestPage({ selectedDataset }) {
 
   // ── Apply pane swap + edits + immediately run — called by "Run New A/B Test" ──
   const handleNewABTest = () => {
-    const controlGroup = pendingSwap?.controlGroup
-      ?? (ciResult?.rag2Better ? 'rag2' : 'rag1');
-    const controlIsRag1 = controlGroup === 'rag1';
-
-    // New control group's settings go to left pane only; right pane stays as-is
-    const newCtrlModel = controlIsRag1 ? rag1Model : rag2Model;
-    const newCtrlTopN  = controlIsRag1 ? rag1TopN  : rag2TopN;
-    const newCtrlSemW  = controlIsRag1 ? rag1SemanticWeight : rag2SemanticWeight;
-    const newCtrlAGLLM = controlIsRag1 ? rag1AGLLM : rag2AGLLM;
-
-    // Left pane = new control group; right pane = unchanged
-    setRag1Model(newCtrlModel); setRag1TopN(newCtrlTopN);
-    setRag1SemanticWeight(newCtrlSemW); setRag1AGLLM(newCtrlAGLLM);
+    // Left pane already updated eagerly when newABTestReady became true; read current rag1 state directly
+    const newCtrlModel = rag1Model;
+    const newCtrlTopN  = rag1TopN;
+    const newCtrlSemW  = rag1SemanticWeight;
+    const newCtrlAGLLM = rag1AGLLM;
 
     setHasRunNewABTest(true);
     setPendingSwap(null);
