@@ -767,14 +767,14 @@ function ABTestPage({ selectedDataset }) {
   }, []);
 
   // ── Fire run directly with explicit values (bypasses stale state) ────────────
-  const _runRAGsDirectly = async (model, topN, semW, agLLM) => {
+  const _runRAGsDirectly = async (rag1Cfg, rag2Cfg) => {
     try {
-      const kwW = parseFloat((1 - semW).toFixed(2));
-      const ragConfig = {
+      const toConfig = ({ model, topN, semW, agLLM }) => ({
         embedding_model: model, top_n: topN,
-        semantic_weight: semW, keyword_weight: kwW, answer_gen_llm: agLLM,
-      };
-      const body = { dataset: selectedDataset, rag1: ragConfig, rag2: ragConfig };
+        semantic_weight: semW, keyword_weight: parseFloat((1 - semW).toFixed(2)),
+        answer_gen_llm: agLLM,
+      });
+      const body = { dataset: selectedDataset, rag1: toConfig(rag1Cfg), rag2: toConfig(rag2Cfg) };
       const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -796,17 +796,15 @@ function ABTestPage({ selectedDataset }) {
       ?? (ciResult?.rag2Better ? 'rag2' : 'rag1');
     const controlIsRag1 = controlGroup === 'rag1';
 
-    // New control group's settings become the base for BOTH panes
+    // New control group's settings go to left pane only; right pane stays as-is
     const newCtrlModel = controlIsRag1 ? rag1Model : rag2Model;
     const newCtrlTopN  = controlIsRag1 ? rag1TopN  : rag2TopN;
     const newCtrlSemW  = controlIsRag1 ? rag1SemanticWeight : rag2SemanticWeight;
     const newCtrlAGLLM = controlIsRag1 ? rag1AGLLM : rag2AGLLM;
 
-    // Left pane = new control group; right pane = same config + overrides applied at eval
+    // Left pane = new control group; right pane = unchanged
     setRag1Model(newCtrlModel); setRag1TopN(newCtrlTopN);
     setRag1SemanticWeight(newCtrlSemW); setRag1AGLLM(newCtrlAGLLM);
-    setRag2Model(newCtrlModel); setRag2TopN(newCtrlTopN);
-    setRag2SemanticWeight(newCtrlSemW); setRag2AGLLM(newCtrlAGLLM);
 
     setHasRunNewABTest(true);
     setPendingSwap(null);
@@ -819,7 +817,10 @@ function ABTestPage({ selectedDataset }) {
     setRagStatus('running'); // show spinner immediately — no Compare button flash
 
     // Pass computed values directly since React state hasn't settled yet
-    _runRAGsDirectly(newCtrlModel, newCtrlTopN, newCtrlSemW, newCtrlAGLLM);
+    _runRAGsDirectly(
+      { model: newCtrlModel, topN: newCtrlTopN, semW: newCtrlSemW, agLLM: newCtrlAGLLM },
+      { model: rag2Model, topN: rag2TopN, semW: rag2SemanticWeight, agLLM: rag2AGLLM }
+    );
   };
 
   useEffect(() => {
@@ -1194,59 +1195,61 @@ function ABTestPage({ selectedDataset }) {
                         </div>
                         {/* Vertical dashed divider */}
                         <div style={{ borderLeft: "2px dashed #bbb", alignSelf: "stretch", margin: "0 16px", flexShrink: 0 }} />
-                        {/* Right: statistical comparison */}
-                        {ciResult && (
-                          <div style={{ flex: "0 0 300px", display: "flex", flexDirection: "column", gap: "14px", fontSize: "0.9rem", whiteSpace: "nowrap" }}>
-                            <div style={{
-                              fontWeight: "bold",
-                              color: ciResult.rag2Better ? "#1a6937" : "#c0392b",
-                            }}>
-                              {ciResult.rag2Better
-                                ? "✅ RAG 2 is statistically better than RAG 1"
-                                : "❌ RAG 2 is NOT statistically better than RAG 1"}
-                            </div>
-                            <div style={{ fontWeight: "bold", color: "#800000" }}>
-                              New Control Group: {ciResult.rag2Better ? "RAG 2" : "RAG 1"}
-                            </div>
-                            {pendingSwap && (
+                        {/* Right: statistical comparison + action button */}
+                        <div style={{ flex: "0 0 300px", display: "flex", flexDirection: "column", gap: "14px", fontSize: "0.9rem", whiteSpace: "nowrap" }}>
+                          {ciResult && (
+                            <>
                               <div style={{
-                                padding: "8px 10px", borderRadius: "6px",
-                                background: "#fff8e1", border: "1px solid #f9a825",
-                                fontSize: "0.85rem", color: "#5d4037", lineHeight: 1.4,
+                                fontWeight: "bold",
+                                color: ciResult.rag2Better ? "#1a6937" : "#c0392b",
                               }}>
-                                ✅ Reference updates submitted. Click &quot;Run New A/B Test&quot; to re-evaluate.
+                                {ciResult.rag2Better
+                                  ? "✅ RAG 2 is statistically better than RAG 1"
+                                  : "❌ RAG 2 is NOT statistically better than RAG 1"}
                               </div>
-                            )}
-                            {(checkedSuggestionsCount > 0 || pendingSwap) && (
-                              <button
-                                onClick={handleNewABTest}
-                                style={{
-                                  background: "#000",
-                                  color: "#fff",
-                                  border: "none",
-                                  borderRadius: "6px",
-                                  padding: "8px 0px",
-                                  fontSize: "0.95rem",
-                                  fontWeight: "bold",
-                                  cursor: "pointer",
-                                  letterSpacing: "0.04em",
-                                  position: "relative",
-                                  overflow: "hidden",
-                                }}
-                              >
-                                <span style={{
-                                  position: "absolute",
-                                  top: 0, bottom: 0,
-                                  left: "-60%",
-                                  width: "30%",
-                                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
-                                  animation: "progressSlide 2.2s linear infinite",
-                                }} />
-                                Run New A/B Test
-                              </button>
-                            )}
-                          </div>
-                        )}
+                              <div style={{ fontWeight: "bold", color: "#800000" }}>
+                                New Control Group: {ciResult.rag2Better ? "RAG 2" : "RAG 1"}
+                              </div>
+                            </>
+                          )}
+                          {pendingSwap && (
+                            <div style={{
+                              padding: "8px 10px", borderRadius: "6px",
+                              background: "#fff8e1", border: "1px solid #f9a825",
+                              fontSize: "0.85rem", color: "#5d4037", lineHeight: 1.4,
+                            }}>
+                              ✅ Reference updates submitted. Click &quot;Run New A/B Test&quot; to re-evaluate.
+                            </div>
+                          )}
+                          {(checkedSuggestionsCount > 0 || pendingSwap) && (
+                            <button
+                              onClick={handleNewABTest}
+                              style={{
+                                background: "#000",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "6px",
+                                padding: "8px 0px",
+                                fontSize: "0.95rem",
+                                fontWeight: "bold",
+                                cursor: "pointer",
+                                letterSpacing: "0.04em",
+                                position: "relative",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <span style={{
+                                position: "absolute",
+                                top: 0, bottom: 0,
+                                left: "-60%",
+                                width: "30%",
+                                background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
+                                animation: "progressSlide 2.2s linear infinite",
+                              }} />
+                              Run New A/B Test
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
