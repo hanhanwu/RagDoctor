@@ -166,6 +166,14 @@ async def run_rag_async(items, query_engine, concurrency=3):
     return results
 
 
+def compute_base_config_hash(dataset: str, embed_model_str: str, retriever_top_n: int,
+                              retriever_alpha: float, llm_str: str) -> str:
+    """Compute the RAG pipeline config hash without any data overrides."""
+    return hashlib.md5(
+        f"{dataset}_{embed_model_str}_{retriever_top_n}_{retriever_alpha}_{llm_str}".encode()
+    ).hexdigest()
+
+
 def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_str,
                                 embed_dim, retriever_top_n, 
                                 retriever_alpha, db_url, dataset, data_overrides=None):
@@ -364,7 +372,7 @@ def get_eval_input(db_url, config_hash):
     return pd.DataFrame(records)
 
 
-async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None):
+async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None, base_config_hash=None):
     conn = psycopg2.connect(
         host=db_url.host,
         port=db_url.port,
@@ -386,13 +394,24 @@ async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None):
         rq_counts = {str(k): v for k, v in rq_df['retrieval_quality_score'].value_counts().to_dict().items()}
         aq_counts = {str(k): v for k, v in aq_df['answer_quality_score'].value_counts().to_dict().items()}
         return config_hash, rq_counts, aq_counts, eval_df
-    
+
+    # Check if base hash eval is cached — enables selective re-eval on changed rows only
+    base_eval_row = None
+    if data_overrides and base_config_hash and base_config_hash != config_hash:
+        cur.execute(
+            "SELECT retrieval_quality, answer_quality FROM existing_auto_eval_output WHERE config_hash = %s",
+            (base_config_hash,)
+        )
+        base_eval_row = cur.fetchone()
+    cur.close()
+    conn.close()
+
     input_df = get_eval_input(db_url, config_hash)
     input_df = pd.merge(input_df, rag_df[['question', 'context']], 
                         left_on='query', right_on='question')
     input_df.drop(columns=['question'], inplace=True)
 
-    # Patch rows for reference overrides (context / referenced_answer)
+    # Apply reference overrides (context / referenced_answer)
     if data_overrides:
         for o in data_overrides:
             if o.index < len(rag_df):
@@ -403,15 +422,46 @@ async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None):
                 if o.referenced_answer is not None:
                     input_df.loc[mask, 'referenced_answer'] = o.referenced_answer
 
-    retrieval_quality = await get_retrieval_quality_output_async(input_df, eval_llm,
-                                                            prompt_versions['rq_prompt_template'])
-    retrieval_quality['same_context'] = retrieval_quality['retrieved_content'] == retrieval_quality['context']
-    
-    answer_quality = await get_answer_quality_output_async(input_df, eval_llm,
-                                                            prompt_versions['aq_prompt_template'])
+    if base_eval_row and data_overrides:
+        # Selective eval: only re-run LLM for overridden rows, reuse base cached results for the rest
+        base_rq_df = pd.DataFrame(base_eval_row[0])
+        base_aq_df = pd.DataFrame(base_eval_row[1])
+        overridden_questions = {
+            rag_df.iloc[o.index]['question']
+            for o in data_overrides if o.index < len(rag_df)
+        }
+        override_df = input_df[input_df['query'].isin(overridden_questions)].copy()
+        print(f"Selective eval: re-running {len(override_df)}/{len(input_df)} changed records")
+
+        # Run rq and aq evals concurrently for all changed rows in one batch
+        new_rq_df, new_aq_df = await asyncio.gather(
+            get_retrieval_quality_output_async(override_df, eval_llm, prompt_versions['rq_prompt_template']),
+            get_answer_quality_output_async(override_df, eval_llm, prompt_versions['aq_prompt_template']),
+        )
+        new_rq_df['same_context'] = new_rq_df['retrieved_content'] == new_rq_df['context']
+
+        base_rq_rest = base_rq_df[~base_rq_df['query'].isin(overridden_questions)].copy()
+        base_aq_rest = base_aq_df[~base_aq_df['query'].isin(overridden_questions)].copy()
+        retrieval_quality = pd.concat([base_rq_rest, new_rq_df], ignore_index=True)
+        answer_quality = pd.concat([base_aq_rest, new_aq_df], ignore_index=True)
+    else:
+        retrieval_quality = await get_retrieval_quality_output_async(input_df, eval_llm,
+                                                                     prompt_versions['rq_prompt_template'])
+        retrieval_quality['same_context'] = retrieval_quality['retrieved_content'] == retrieval_quality['context']
+        answer_quality = await get_answer_quality_output_async(input_df, eval_llm,
+                                                               prompt_versions['aq_prompt_template'])
+
     print(f"""retrieval quality shape: {retrieval_quality.shape},
            answer quality shape: {answer_quality.shape}""")
 
+    conn = psycopg2.connect(
+        host=db_url.host,
+        port=db_url.port,
+        dbname=db_url.database,
+        user=db_url.username,
+        password=db_url.password,
+    )
+    cur = conn.cursor()
     cur.execute("""
             INSERT INTO existing_auto_eval_output
                 (config_hash, retrieval_quality, answer_quality)
@@ -436,11 +486,12 @@ async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None):
     
 
 
-async def run_auto_eval(config_hashes, db_url, rag_df, data_overrides_rag2=None):
+async def run_auto_eval(config_hashes, db_url, rag_df, data_overrides_rag2=None, base_config_hash_rag2=None):
     results = await asyncio.gather(*[
         eval_one_config(
             config_hash, db_url, rag_df,
-            data_overrides=data_overrides_rag2 if i == 1 else None
+            data_overrides=data_overrides_rag2 if i == 1 else None,
+            base_config_hash=base_config_hash_rag2 if i == 1 else None,
         )
         for i, config_hash in enumerate(config_hashes)
     ])
