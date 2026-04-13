@@ -738,6 +738,11 @@ function ABTestPage({ selectedDataset }) {
   const [pendingSwap, setPendingSwap] = useState(null); // { controlGroup } | null
   const [hasRunNewABTest, setHasRunNewABTest] = useState(false);
 
+  // true whenever "Run New A/B Test" button is visible — suppresses Compare button
+  const newABTestReadyRef = useRef(false);
+
+
+  newABTestReadyRef.current = checkedSuggestionsCount > 0 || !!pendingSwap;
 
   const ciResult = useMemo(() => {
     if (!evalResults.rag1?.eval_records || !evalResults.rag2?.eval_records) return null;
@@ -852,11 +857,13 @@ function ABTestPage({ selectedDataset }) {
   }, [rcaJobId]);
 
   useEffect(() => {
+    if (newABTestReadyRef.current) return;
     if (rcaStatus === "done") { setRcaStatus("idle"); setRcaData(null); }
   }, [rag1Model, rag1TopN, rag1SemanticWeight, rag1AGLLM,
       rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM]);
 
   useEffect(() => {
+    if (newABTestReadyRef.current) return;
     if (rcaStatus === "done") setSettingsChangedAfterRCA(true);
   }, [rag1Model, rag1TopN, rag1SemanticWeight, rag1AGLLM,
       rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM]);
@@ -870,6 +877,7 @@ function ABTestPage({ selectedDataset }) {
   }, [rcaData]);
 
   useEffect(() => {
+    if (newABTestReadyRef.current) return;
     if (ragStatus === "done") setSettingsChangedAfterRAG(true);
   }, [rag1Model, rag1TopN, rag1SemanticWeight, rag1AGLLM,
       rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM]);
