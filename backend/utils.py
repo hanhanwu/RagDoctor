@@ -166,35 +166,12 @@ async def run_rag_async(items, query_engine, concurrency=3):
     return results
 
 
-def compute_base_config_hash(dataset: str, embed_model_str: str, retriever_top_n: int,
-                              retriever_alpha: float, llm_str: str) -> str:
-    """Compute the RAG pipeline config hash without any data overrides."""
-    return hashlib.md5(
-        f"{dataset}_{embed_model_str}_{retriever_top_n}_{retriever_alpha}_{llm_str}".encode()
-    ).hexdigest()
-
-
 def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_str,
                                 embed_dim, retriever_top_n, 
-                                retriever_alpha, db_url, dataset, data_overrides=None):
-    # Base hash — always computed from config only
-    base_hash = hashlib.md5(
+                                retriever_alpha, db_url, dataset):
+    config_hash = hashlib.md5(
         f"{dataset}_{embed_model_str}_{retriever_top_n}_{retriever_alpha}_{llm_str}".encode()
     ).hexdigest()
-
-    if data_overrides:
-        overrides_sig = hashlib.md5(
-            json.dumps(
-                [{"index": o.index, "context": o.context, "referenced_answer": o.referenced_answer}
-                 for o in sorted(data_overrides, key=lambda x: x.index)],
-                sort_keys=True
-            ).encode()
-        ).hexdigest()
-        config_hash = hashlib.md5(
-            f"{dataset}_{embed_model_str}_{retriever_top_n}_{retriever_alpha}_{llm_str}_{overrides_sig}".encode()
-        ).hexdigest()
-    else:
-        config_hash = base_hash
 
     conn = psycopg2.connect(
         host=db_url.host,
@@ -210,31 +187,6 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
         cur.close()
         conn.close()
         return config_hash
-
-    # If overrides present, try to copy base hash row instead of re-running LLM
-    if data_overrides:
-        cur.execute(
-            "SELECT dataset, embedding_model, top_n_retrieval, semantic_weight, answer_gen_llm, output "
-            "FROM existing_rag_output WHERE config_hash = %s",
-            (base_hash,)
-        )
-        base_row = cur.fetchone()
-        if base_row:
-            # base_row[-1] (output) may be returned as a dict by psycopg2 for JSON/JSONB columns;
-            # re-serialize it so psycopg2 can insert it as a string.
-            base_row_serialized = (*base_row[:-1], json.dumps(base_row[-1]) if isinstance(base_row[-1], (dict, list)) else base_row[-1])
-            cur.execute("""
-                INSERT INTO existing_rag_output
-                    (config_hash, dataset, embedding_model, top_n_retrieval,
-                     semantic_weight, answer_gen_llm, output)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (config_hash) DO NOTHING
-            """, (config_hash, *base_row_serialized))
-            conn.commit()
-            cur.close()
-            conn.close()
-            print(f"Copied base hash {base_hash} to override hash {config_hash}.")
-            return config_hash
 
     from llama_index.embeddings.openai import OpenAIEmbedding
     embed_model = OpenAIEmbedding(
@@ -286,7 +238,7 @@ def run_llamaindex_rag_pipeline(selected_items, documents, llm_str, embed_model_
     return config_hash
 
 
-def run_one(cfg, selected_items, documents, db_url, dataset, data_overrides=None):
+def run_one(cfg, selected_items, documents, db_url, dataset):
     llm_str = cfg.answer_gen_llm
     embed_model_str = cfg.embedding_model
     embed_dim = embedding_map[embed_model_str]['embedding_dim']
@@ -303,20 +255,15 @@ def run_one(cfg, selected_items, documents, db_url, dataset, data_overrides=None
         retriever_alpha,
         db_url,
         dataset,
-        data_overrides=data_overrides
     )
 
 
-async def run_all_in_processes(cfgs, selected_items, documents, url, dataset,
-                               data_overrides_rag2=None):
+async def run_all_in_processes(cfgs, selected_items, documents, url, dataset):
     loop = asyncio.get_running_loop()
     with ProcessPoolExecutor() as pool:
         tasks = [
-            loop.run_in_executor(
-                pool, run_one, cfg, selected_items, documents, url, dataset,
-                data_overrides_rag2 if i == 1 else None
-            )
-            for i, cfg in enumerate(cfgs)
+            loop.run_in_executor(pool, run_one, cfg, selected_items, documents, url, dataset)
+            for cfg in cfgs
         ]
         config_hashes = await asyncio.gather(*tasks)
     return config_hashes
@@ -372,7 +319,7 @@ def get_eval_input(db_url, config_hash):
     return pd.DataFrame(records)
 
 
-async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None, base_config_hash=None):
+async def eval_one_config(config_hash, db_url, rag_df):
     conn = psycopg2.connect(
         host=db_url.host,
         port=db_url.port,
@@ -394,63 +341,23 @@ async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None, base
         rq_counts = {str(k): v for k, v in rq_df['retrieval_quality_score'].value_counts().to_dict().items()}
         aq_counts = {str(k): v for k, v in aq_df['answer_quality_score'].value_counts().to_dict().items()}
         return config_hash, rq_counts, aq_counts, eval_df
-
-    # Check if base hash eval is cached — enables selective re-eval on changed rows only
-    base_eval_row = None
-    if data_overrides and base_config_hash and base_config_hash != config_hash:
-        cur.execute(
-            "SELECT retrieval_quality, answer_quality FROM existing_auto_eval_output WHERE config_hash = %s",
-            (base_config_hash,)
-        )
-        base_eval_row = cur.fetchone()
     cur.close()
     conn.close()
 
     input_df = get_eval_input(db_url, config_hash)
-    input_df = pd.merge(input_df, rag_df[['question', 'context']], 
+    # Merge context and ground_truth from rag_df — always use rag_df as source of truth
+    # so that raw_datasets updates are reflected without clearing existing_rag_output
+    input_df = pd.merge(input_df, rag_df[['question', 'context', 'ground_truth']],
                         left_on='query', right_on='question')
     input_df.drop(columns=['question'], inplace=True)
+    input_df['referenced_answer'] = input_df['ground_truth']
+    input_df.drop(columns=['ground_truth'], inplace=True)
 
-    # Apply reference overrides (context / referenced_answer)
-    if data_overrides:
-        for o in data_overrides:
-            if o.index < len(rag_df):
-                question = rag_df.iloc[o.index]['question']
-                mask = input_df['query'] == question
-                if o.context is not None:
-                    input_df.loc[mask, 'context'] = o.context
-                if o.referenced_answer is not None:
-                    input_df.loc[mask, 'referenced_answer'] = o.referenced_answer
-
-    if base_eval_row and data_overrides:
-        # Selective eval: only re-run LLM for overridden rows, reuse base cached results for the rest
-        base_rq_df = pd.DataFrame(base_eval_row[0])
-        base_aq_df = pd.DataFrame(base_eval_row[1])
-        overridden_questions = {
-            rag_df.iloc[o.index]['question']
-            for o in data_overrides if o.index < len(rag_df)
-        }
-        override_df = input_df[input_df['query'].isin(overridden_questions)].copy()
-        print(f"Selective eval: re-running {len(override_df)}/{len(input_df)} changed records")
-
-        # Run rq and aq evals concurrently for all changed rows in one batch
-        new_rq_df, new_aq_df = await asyncio.gather(
-            get_retrieval_quality_output_async(override_df, eval_llm, prompt_versions['rq_prompt_template']),
-            get_answer_quality_output_async(override_df, eval_llm, prompt_versions['aq_prompt_template']),
-        )
-        new_rq_df['same_context'] = new_rq_df['retrieved_content'] == new_rq_df['context']
-
-        base_rq_rest = base_rq_df[~base_rq_df['query'].isin(overridden_questions)].copy()
-        base_aq_rest = base_aq_df[~base_aq_df['query'].isin(overridden_questions)].copy()
-        retrieval_quality = pd.concat([base_rq_rest, new_rq_df], ignore_index=True)
-        answer_quality = pd.concat([base_aq_rest, new_aq_df], ignore_index=True)
-    else:
-        retrieval_quality = await get_retrieval_quality_output_async(input_df, eval_llm,
-                                                                     prompt_versions['rq_prompt_template'])
-        retrieval_quality['same_context'] = retrieval_quality['retrieved_content'] == retrieval_quality['context']
-        answer_quality = await get_answer_quality_output_async(input_df, eval_llm,
-                                                               prompt_versions['aq_prompt_template'])
-
+    retrieval_quality, answer_quality = await asyncio.gather(
+        get_retrieval_quality_output_async(input_df, eval_llm, prompt_versions['rq_prompt_template']),
+        get_answer_quality_output_async(input_df, eval_llm, prompt_versions['aq_prompt_template']),
+    )
+    retrieval_quality['same_context'] = retrieval_quality['retrieved_content'] == retrieval_quality['context']
     print(f"""retrieval quality shape: {retrieval_quality.shape},
            answer quality shape: {answer_quality.shape}""")
 
@@ -486,14 +393,10 @@ async def eval_one_config(config_hash, db_url, rag_df, data_overrides=None, base
     
 
 
-async def run_auto_eval(config_hashes, db_url, rag_df, data_overrides_rag2=None, base_config_hash_rag2=None):
+async def run_auto_eval(config_hashes, db_url, rag_df):
     results = await asyncio.gather(*[
-        eval_one_config(
-            config_hash, db_url, rag_df,
-            data_overrides=data_overrides_rag2 if i == 1 else None,
-            base_config_hash=base_config_hash_rag2 if i == 1 else None,
-        )
-        for i, config_hash in enumerate(config_hashes)
+        eval_one_config(config_hash, db_url, rag_df)
+        for config_hash in config_hashes
     ])
 
     return {

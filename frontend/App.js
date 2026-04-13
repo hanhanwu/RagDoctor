@@ -278,7 +278,7 @@ function parseSuggestions(text) {
     .filter(s => s.length > 0);
 }
 
-function RCAResultsPage({ results }) {
+function RCAResultsPage({ results, dataset }) {
   if (!results) return (
     <div style={{ padding: "32px", fontFamily: "Calibri, sans-serif", color: "#800000", fontSize: "1.8rem",
       height: "100vh", overflowY: "auto", boxSizing: "border-box" }}>
@@ -358,11 +358,18 @@ function RCAResultsPage({ results }) {
     const edits = Object.entries(editState)
       .map(([idx, fields]) => ({ index: Number(idx), ...fields }))
       .filter(e => e.context !== undefined || e.referenced_answer !== undefined);
-    localStorage.setItem('rcaEdits', JSON.stringify({
-      controlGroup,
-      edits,
-    }));
-    window.close();
+    const doSubmit = async () => {
+      if (edits.length > 0) {
+        await fetch(`https://${BACKEND_URL}/submit-reference-edits`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataset_name: dataset, edits }),
+        });
+      }
+      localStorage.setItem('rcaSubmitted', JSON.stringify({ controlGroup }));
+      window.close();
+    };
+    doSubmit();
   }
 
   const editBtnStyle = {
@@ -727,10 +734,8 @@ function ABTestPage({ selectedDataset }) {
   const [rcaData, setRcaData] = useState(null);
   const [settingsChangedAfterRAG, setSettingsChangedAfterRAG] = useState(false);
   const [checkedSuggestionsCount, setCheckedSuggestionsCount] = useState(0);
-  // pendingEdits: { edits: [{index, context?, referenced_answer?}] } | null
-  const [pendingEdits, setPendingEdits] = useState(null);
-  // pendingSwap: set by Page 3 Submit; consumed only when user clicks "Run New A/B Test"
-  const [pendingSwap, setPendingSwap] = useState(null); // { controlGroup, edits } | null
+  // pendingSwap: set by RCA tab Submit; consumed when user clicks "Run New A/B Test"
+  const [pendingSwap, setPendingSwap] = useState(null); // { controlGroup } | null
   const [hasRunNewABTest, setHasRunNewABTest] = useState(false);
 
 
@@ -742,25 +747,22 @@ function ABTestPage({ selectedDataset }) {
   const ciResultRef = useRef(null);
   ciResultRef.current = ciResult;
 
-  // ── Listen for rcaEdits written by the RCA tab on Submit ─────────────────────
+  // ── Listen for rcaSubmitted written by the RCA tab on Submit ─────────────────────
   useEffect(() => {
     function onStorage(e) {
-      if (e.key !== 'rcaEdits') return;
+      if (e.key !== 'rcaSubmitted') return;
       const raw = e.newValue;
       if (!raw) return;
-      const { controlGroup, edits } = JSON.parse(raw);
-      localStorage.removeItem('rcaEdits');
-      if (edits?.length > 0) {
-        // Store for later — settings only update when user clicks "Run New A/B Test"
-        setPendingSwap({ controlGroup, edits });
-      }
+      const { controlGroup } = JSON.parse(raw);
+      localStorage.removeItem('rcaSubmitted');
+      setPendingSwap({ controlGroup });
     }
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   // ── Fire run directly with explicit values (bypasses stale state) ────────────
-  const _runRAGsDirectly = async (model, topN, semW, agLLM, edits) => {
+  const _runRAGsDirectly = async (model, topN, semW, agLLM) => {
     try {
       const kwW = parseFloat((1 - semW).toFixed(2));
       const ragConfig = {
@@ -768,7 +770,6 @@ function ABTestPage({ selectedDataset }) {
         semantic_weight: semW, keyword_weight: kwW, answer_gen_llm: agLLM,
       };
       const body = { dataset: selectedDataset, rag1: ragConfig, rag2: ragConfig };
-      if (edits?.length) body.data_overrides_rag2 = edits;
       const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -802,10 +803,8 @@ function ABTestPage({ selectedDataset }) {
     setRag2Model(newCtrlModel); setRag2TopN(newCtrlTopN);
     setRag2SemanticWeight(newCtrlSemW); setRag2AGLLM(newCtrlAGLLM);
 
-    const edits = pendingSwap?.edits ?? [];
     setHasRunNewABTest(true);
     setPendingSwap(null);
-    setPendingEdits(null);
     setEvalResults({ rag1: null, rag2: null });
     setJobId(null);
     setRcaStatus('idle');
@@ -815,7 +814,7 @@ function ABTestPage({ selectedDataset }) {
     setRagStatus('running'); // show spinner immediately — no Compare button flash
 
     // Pass computed values directly since React state hasn't settled yet
-    _runRAGsDirectly(newCtrlModel, newCtrlTopN, newCtrlSemW, newCtrlAGLLM, edits);
+    _runRAGsDirectly(newCtrlModel, newCtrlTopN, newCtrlSemW, newCtrlAGLLM);
   };
 
   useEffect(() => {
@@ -934,9 +933,6 @@ function ABTestPage({ selectedDataset }) {
           answer_gen_llm: rag2AGLLM,
         },
       };
-      if (pendingEdits?.edits?.length) {
-        body.data_overrides_rag2 = pendingEdits.edits;
-      }
       const response = await fetch(`https://${BACKEND_URL}/run-rags`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -947,7 +943,6 @@ function ABTestPage({ selectedDataset }) {
       setQueuePosition(data.position);
       setRagStatus(data.position === 0 ? "running" : "queued");
       setSettingsChangedAfterRAG(false);
-      setPendingEdits(null);  // consumed
     } catch (error) {
       console.error("Error running RAGs:", error);
       setRagStatus("error");
@@ -1052,15 +1047,6 @@ function ABTestPage({ selectedDataset }) {
             </div>
           ) : (
             <>
-              {pendingEdits?.edits?.length > 0 && (
-                <div style={{
-                  width: "80%", marginBottom: "10px", padding: "10px 16px",
-                  background: "#fff8e1", border: "1px solid #f9a825", borderRadius: "6px",
-                  fontSize: "0.95rem", color: "#5d4037", textAlign: "center",
-                }}>
-                  📝 Running with updated references from re-evaluation list
-                </div>
-              )}
               {((!hasRunNewABTest && ragStatus !== "done") || settingsChangedAfterRAG) && (
                 <button
                   onClick={handleRunRAGs}
@@ -1182,7 +1168,7 @@ function ABTestPage({ selectedDataset }) {
                                 onChange={(e) => {
                                   setCheckedSuggestionsCount(prev => prev + (e.target.checked ? 1 : -1));
                                   if (e.target.checked) {
-                                    window.open(`${window.location.pathname}?view=rca`, '_blank');
+                                    window.open(`${window.location.pathname}?view=rca&dataset=${encodeURIComponent(selectedDataset)}`, '_blank');
                                   }
                                 }}
                                 style={{ marginTop: "3px", accentColor: "#800000", width: "16px", height: "16px", flexShrink: 0 }}
@@ -1220,7 +1206,7 @@ function ABTestPage({ selectedDataset }) {
                                 background: "#fff8e1", border: "1px solid #f9a825",
                                 fontSize: "0.85rem", color: "#5d4037", lineHeight: 1.4,
                               }}>
-                                📝 Re-evaluation edits ready. Click &quot;Run New A/B Test&quot; to apply.
+                                ✅ Reference updates submitted. Click &quot;Run New A/B Test&quot; to re-evaluate.
                               </div>
                             )}
                             {(checkedSuggestionsCount > 0 || pendingSwap) && (
@@ -1327,7 +1313,8 @@ function App() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('view') === 'rca') {
     const stored = localStorage.getItem('rcaResults');
-    return <RCAResultsPage results={stored ? JSON.parse(stored) : null} />;
+    const dataset = params.get('dataset') || '';
+    return <RCAResultsPage results={stored ? JSON.parse(stored) : null} dataset={dataset} />;
   }
   return <AppMain />;
 }

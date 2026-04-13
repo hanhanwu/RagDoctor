@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import make_url
 from typing import Optional
 
-from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_review, FINANCIAL_RAG_SYSTEM_PROMPT, rca_llm, compute_base_config_hash
+from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_review, FINANCIAL_RAG_SYSTEM_PROMPT, rca_llm
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,11 +47,14 @@ class DataOverride(BaseModel):
 class PreprocessRequest(BaseModel):
     dataset_name: str
 
+class ReferenceEditsRequest(BaseModel):
+    dataset_name: str
+    edits: list[DataOverride]
+
 class DatasetRequest(BaseModel):
     dataset: str
     rag1: RAGConfig
     rag2: RAGConfig
-    data_overrides_rag2: Optional[list[DataOverride]] = None
 
 preprocessing_status = {"status": "idle", "message": ""}
 rag_data = {"rag_lst": [], "documents": [], "rag_df": None}
@@ -200,27 +203,11 @@ async def process_job_queue():
         _job_results[job_id] = {"status": "running"}
         try:
             cfgs = [request.rag1, request.rag2]
-            overrides_rag2 = request.data_overrides_rag2 or []
             config_hashes = await run_all_in_processes(
-                cfgs, snapshot['rag_lst'], snapshot['documents'], db_url, request.dataset,
-                data_overrides_rag2=overrides_rag2
+                cfgs, snapshot['rag_lst'], snapshot['documents'], db_url, request.dataset
             )
-            # Compute base hash and overridden questions for selective eval/RCA
-            rag2_base_hash = compute_base_config_hash(
-                request.dataset, request.rag2.embedding_model,
-                request.rag2.top_n, request.rag2.semantic_weight, request.rag2.answer_gen_llm
-            )
-            overridden_questions = []
-            if overrides_rag2:
-                rag_df_snap = snapshot['rag_df']
-                for o in overrides_rag2:
-                    if o.index < len(rag_df_snap):
-                        overridden_questions.append(rag_df_snap.iloc[o.index]['question'])
-                overridden_questions = list(set(overridden_questions))
             eval_results = await run_auto_eval(
-                config_hashes, db_url, snapshot['rag_df'],
-                data_overrides_rag2=overrides_rag2,
-                base_config_hash_rag2=rag2_base_hash if overrides_rag2 else None
+                config_hashes, db_url, snapshot['rag_df']
             )
             _job_results[job_id] = {
                 "status": "done",
@@ -232,8 +219,6 @@ async def process_job_queue():
                 "rag2": eval_results.get(config_hashes[1], {}),
                 "eval_records_1": eval_results.get(config_hashes[0], {}).get("eval_records", []),
                 "eval_records_2": eval_results.get(config_hashes[1], {}).get("eval_records", []),
-                "overridden_questions": overridden_questions,
-                "rag2_base_hash": rag2_base_hash if overrides_rag2 else None,
             }
         except Exception as e:
             traceback.print_exc()
@@ -285,8 +270,6 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
         rag1_config = job.get("rag1_config", {})
         rag2_config = job.get("rag2_config", {})
         same_config = len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]
-        rag2_base_hash = job.get("rag2_base_hash")
-        overridden_questions = set(job.get("overridden_questions") or [])
 
         def _to_dict(r):
             return {"root_cause_analysis": r.root_cause_analysis,
@@ -354,23 +337,7 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
                 rca_2 = cached[config_hashes[1]]["rca_records"]
                 agg_review_2_dict = cached[config_hashes[1]]["agg_review"]
             else:
-                # Try selective RCA: only run on overridden rows, reuse base for the rest
-                base2_for_rca = {}
-                if rag2_base_hash and overridden_questions and rag2_base_hash != config_hashes[1]:
-                    base2_for_rca = await asyncio.to_thread(_db_fetch_cached_rca, [rag2_base_hash])
-                if rag2_base_hash in base2_for_rca:
-                    print(f"Selective RCA for rag2: {len(overridden_questions)} overridden rows out of {len(records_2)}")
-                    base_rca_lookup = {r['query']: r for r in base2_for_rca[rag2_base_hash]["rca_records"]}
-                    to_run = [r for r in records_2 if r['query'] in overridden_questions]
-                    new_rca = list(await asyncio.gather(*[run_rca(r) for r in to_run]))
-                    new_lookup = {r['query']: r for r in new_rca}
-                    rca_2 = [
-                        new_lookup[r['query']] if r['query'] in overridden_questions
-                        else base_rca_lookup.get(r['query'], r)
-                        for r in records_2
-                    ]
-                else:
-                    rca_2 = list(await asyncio.gather(*[run_rca(r) for r in records_2]))
+                rca_2 = list(await asyncio.gather(*[run_rca(r) for r in records_2]))
                 agg_df_2 = build_agg_df(rca_2, rag2_config)
                 agg_review_2 = await run_agg_rag_review(agg_df_2, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT) if len(agg_df_2) > 0 else None
                 agg_review_2_dict = _to_dict(agg_review_2)
@@ -420,3 +387,48 @@ async def get_rca_status(rca_job_id: str):
     if rca_job_id not in _rca_results:
         return {"status": "not_found"}
     return _rca_results[rca_job_id]
+
+
+@app.post("/submit-reference-edits")
+async def submit_reference_edits(request: ReferenceEditsRequest):
+    """Patch raw_datasets with corrected references, update in-memory rag_data,
+    and invalidate downstream eval/RCA caches so future runs use fresh references."""
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+        for edit in request.edits:
+            if edit.context is not None:
+                cur.execute(
+                    """UPDATE raw_datasets
+                       SET data = jsonb_set(data, '{contexts}', %s::jsonb)
+                       WHERE dataset_name = %s AND record_index = %s""",
+                    (json.dumps([edit.context]), request.dataset_name, edit.index)
+                )
+            if edit.referenced_answer is not None:
+                cur.execute(
+                    """UPDATE raw_datasets
+                       SET data = jsonb_set(data, '{ground_truths}', %s::jsonb)
+                       WHERE dataset_name = %s AND record_index = %s""",
+                    (json.dumps([edit.referenced_answer]), request.dataset_name, edit.index)
+                )
+        # Invalidate downstream caches — existing_rag_output is kept (no LLM cost)
+        cur.execute("TRUNCATE TABLE existing_auto_eval_output RESTART IDENTITY CASCADE")
+        cur.execute("TRUNCATE TABLE existing_rca_output RESTART IDENTITY CASCADE")
+        cur.close()
+    finally:
+        conn.close()
+
+    # Update in-memory rag_data so next job uses fresh references without reload
+    for edit in request.edits:
+        idx = edit.index
+        if idx < len(rag_data['rag_lst']):
+            if edit.context is not None:
+                rag_data['rag_lst'][idx]['context'] = edit.context
+            if edit.referenced_answer is not None:
+                rag_data['rag_lst'][idx]['ground_truth'] = edit.referenced_answer
+    if request.edits:
+        rag_data['rag_df'] = pd.DataFrame(rag_data['rag_lst'])
+
+    print(f"Reference edits applied: {len(request.edits)} record(s) updated in '{request.dataset_name}'")
+    return {"status": "ok", "updated": len(request.edits)}
