@@ -13,8 +13,9 @@ const answerGenLLMModels = [
 
 function RAGSettings({ title, selectedModel, onModelChange,
   topN, onTopNChange, semanticWeight, onSemanticWeightChange,
-  agLLM, onAGLLMChange,
+  agLLM, onAGLLMChange, highlightGreen, fingerHint,
 }) {
+  const green = "#27ae60";
   return (
     <div style={{
       flex: 1,
@@ -26,8 +27,39 @@ function RAGSettings({ title, selectedModel, onModelChange,
       boxSizing: "border-box",
       height: "100%",
       overflowY: "auto",
-      minWidth: 0
+      minWidth: 0,
     }}>
+      {highlightGreen && (
+        <div style={{
+          background: green,
+          color: "#fff",
+          borderRadius: "6px",
+          padding: "8px 14px",
+          marginBottom: "14px",
+          fontSize: "0.85rem",
+          fontWeight: "bold",
+        }}>
+          🔒 Updated to New Control Group RAG settings
+        </div>
+      )}
+      {fingerHint && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "#fffbe6",
+          border: "1px solid #f9a825",
+          borderRadius: "6px",
+          padding: "8px 14px",
+          marginBottom: "14px",
+          fontSize: "0.85rem",
+          fontWeight: "bold",
+          color: "#7b5800",
+        }}>
+          <span style={{ display: "inline-block", animation: "fingerBounce 1s ease-in-out infinite", fontSize: "1.3rem" }}>👇</span>
+          Adjust new Test Group RAG settings here
+        </div>
+      )}
       <h2 style={{ color: "#B22222" }}>{title}</h2>
       <div style={{ marginBottom: "16px" }}>
         <label htmlFor={`${title}-embedding-model`} style={{ fontWeight: "bold" }}>
@@ -38,7 +70,7 @@ function RAGSettings({ title, selectedModel, onModelChange,
           id={`${title}-embedding-model`}
           value={selectedModel}
           onChange={e => onModelChange(e.target.value)}
-          style={{ marginTop: "8px", padding: "6px", width: "100%" }}
+          style={{ marginTop: "8px", padding: "6px", width: "100%", color: highlightGreen ? green : undefined, fontWeight: highlightGreen ? "bold" : undefined }}
         >
           {embeddingModels.map(model => (
             <option key={model.value} value={model.value}>{model.label}</option>
@@ -48,7 +80,7 @@ function RAGSettings({ title, selectedModel, onModelChange,
       <div style={{ marginBottom: "16px" }}>
         <label style={{ fontWeight: "bold" }}>Top N Retrieved Content:</label>
         <br />
-        <select value={topN} onChange={e => onTopNChange(Number(e.target.value))} style={{ marginTop: "8px", padding: "6px", width: "100%" }}>
+        <select value={topN} onChange={e => onTopNChange(Number(e.target.value))} style={{ marginTop: "8px", padding: "6px", width: "100%", color: highlightGreen ? green : undefined, fontWeight: highlightGreen ? "bold" : undefined }}>
           {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Top {n}</option>)}
         </select>
       </div>
@@ -68,12 +100,12 @@ function RAGSettings({ title, selectedModel, onModelChange,
             if (v > 1) v = 1;
             onSemanticWeightChange(v);
           }}
-          style={{ marginTop: "8px", padding: "6px", width: "100%" }}
+          style={{ marginTop: "8px", padding: "6px", width: "100%", color: highlightGreen ? green : undefined, fontWeight: highlightGreen ? "bold" : undefined }}
         />
       </div>
       <div style={{ marginBottom: "8px", color: "#333" }}>
         <strong>Key Word Retrieval Weight:</strong>
-        <div style={{ marginTop: "6px" }}>{(1 - (Number(semanticWeight) || 0)).toFixed(2)}</div>
+        <div style={{ marginTop: "6px", color: highlightGreen ? green : undefined, fontWeight: highlightGreen ? "bold" : undefined }}>{(1 - (Number(semanticWeight) || 0)).toFixed(2)}</div>
       </div>
       <div style={{ marginBottom: "16px" }}>
         <label htmlFor={`${title}-answer-gen-llm`} style={{ fontWeight: "bold" }}>
@@ -84,7 +116,7 @@ function RAGSettings({ title, selectedModel, onModelChange,
           id={`${title}-answer-gen-llm`}
           value={agLLM}
           onChange={e => onAGLLMChange(e.target.value)}
-          style={{ marginTop: "8px", padding: "6px", width: "100%" }}
+          style={{ marginTop: "8px", padding: "6px", width: "100%", color: highlightGreen ? green : undefined, fontWeight: highlightGreen ? "bold" : undefined }}
         >
           {answerGenLLMModels.map(model => (
             <option key={model.value} value={model.value}>{model.label}</option>
@@ -740,9 +772,8 @@ function ABTestPage({ selectedDataset }) {
 
   // true whenever "Run New A/B Test" button is visible — suppresses Compare button
   const newABTestReadyRef = useRef(false);
-
-
-  newABTestReadyRef.current = checkedSuggestionsCount > 0 || !!pendingSwap;
+  const newABTestReady = checkedSuggestionsCount > 0 || !!pendingSwap;
+  newABTestReadyRef.current = newABTestReady;
 
   const ciResult = useMemo(() => {
     if (!evalResults.rag1?.eval_records || !evalResults.rag2?.eval_records) return null;
@@ -751,6 +782,21 @@ function ABTestPage({ selectedDataset }) {
 
   const ciResultRef = useRef(null);
   ciResultRef.current = ciResult;
+
+  // Keep a live ref of rag2 values to avoid stale closures in the eager-update effect
+  const rag2ValuesRef = useRef({ rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM });
+  rag2ValuesRef.current = { rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM };
+
+  // ── Eagerly update left pane when "Run New A/B Test" button first appears ──────
+  useEffect(() => {
+    if (!newABTestReady) return;
+    const controlGroup = pendingSwap?.controlGroup ?? (ciResultRef.current?.rag2Better ? 'rag2' : 'rag1');
+    if (controlGroup === 'rag2') {
+      const { rag2Model: m, rag2TopN: t, rag2SemanticWeight: s, rag2AGLLM: l } = rag2ValuesRef.current;
+      setRag1Model(m); setRag1TopN(t); setRag1SemanticWeight(s); setRag1AGLLM(l);
+    }
+    // if controlGroup === 'rag1', left pane already has the correct settings
+  }, [checkedSuggestionsCount, pendingSwap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Listen for rcaSubmitted written by the RCA tab on Submit ─────────────────────
   useEffect(() => {
@@ -969,7 +1015,7 @@ function ABTestPage({ selectedDataset }) {
       boxSizing: "border-box",
       overflow: "hidden",
     }}>
-      <style>{`@keyframes arrowBounce { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(10px); opacity: 0.95; } 100% { transform: translateX(0); opacity: 1; } } @keyframes arrowBounceLeft { 0% { transform: scaleX(-1) translateX(0); opacity: 1; } 50% { transform: scaleX(-1) translateX(10px); opacity: 0.95; } 100% { transform: scaleX(-1) translateX(0); opacity: 1; } } @keyframes progressSlide { 0% { left: -40%; } 100% { left: 110%; } } @keyframes dotFade { 0%, 100% { opacity: 0; } 30%, 70% { opacity: 1; } }`}</style>
+      <style>{`@keyframes arrowBounce { 0% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(10px); opacity: 0.95; } 100% { transform: translateX(0); opacity: 1; } } @keyframes arrowBounceLeft { 0% { transform: scaleX(-1) translateX(0); opacity: 1; } 50% { transform: scaleX(-1) translateX(10px); opacity: 0.95; } 100% { transform: scaleX(-1) translateX(0); opacity: 1; } } @keyframes progressSlide { 0% { left: -40%; } 100% { left: 110%; } } @keyframes dotFade { 0%, 100% { opacity: 0; } 30%, 70% { opacity: 1; } } @keyframes fingerBounce { 0% { transform: translateY(0); } 50% { transform: translateY(7px); } 100% { transform: translateY(0); } }`}</style>
       {/* ── Top Header Bar ── */}
       <div style={{
         display: "flex",
@@ -1028,6 +1074,7 @@ function ABTestPage({ selectedDataset }) {
             onSemanticWeightChange={setRag1SemanticWeight}
             agLLM={rag1AGLLM}
             onAGLLMChange={setRag1AGLLM}
+            highlightGreen={newABTestReady}
           />
         </div>
 
@@ -1271,6 +1318,7 @@ function ABTestPage({ selectedDataset }) {
             onSemanticWeightChange={setRag2SemanticWeight}
             agLLM={rag2AGLLM}
             onAGLLMChange={setRag2AGLLM}
+            fingerHint={newABTestReady}
           />
         </div>
       </div>
