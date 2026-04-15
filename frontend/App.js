@@ -192,6 +192,19 @@ function computeAQCI(records1, records2) {
   return { meanDiff: meanD, ciLower, ciUpper, rag2Better: ciLower > 0, n: nd };
 }
 
+function scorePercentages(records, field) {
+  if (!records?.length) return {};
+  const total = records.length;
+  const counts = {};
+  for (const r of records) {
+    const s = String(r?.[field] ?? "");
+    if (s !== "") counts[s] = (counts[s] || 0) + 1;
+  }
+  const pcts = {};
+  for (const k in counts) pcts[k] = counts[k] / total * 100;
+  return pcts;
+}
+
 function EvalStackedBarChart({ title, rag1Counts, rag2Counts, scoreDefinitions }) {
   const [showTip, setShowTip] = useState(false);
   if (!rag1Counts && !rag2Counts) return null;
@@ -881,7 +894,21 @@ function ABTestPage({ selectedDataset }) {
           const controlAggReview = controlGroup === "rag1" ? results.agg_review_1 : results.agg_review_2;
           const hasReEvalRows = controlItems.some(item => item?.needs_re_eval === 1);
           const controlSuggestions = parseSuggestions(controlAggReview?.improvement_suggestions);
-          setRcaData({ hasReEvalRows, controlSuggestions });
+          const rq1 = scorePercentages(data.rca_records_1, 'new_retrieval_quality_score');
+          const rq2 = scorePercentages(data.rca_records_2, 'new_retrieval_quality_score');
+          const aq1 = scorePercentages(data.rca_records_1, 'new_answer_quality_score');
+          const aq2 = scorePercentages(data.rca_records_2, 'new_answer_quality_score');
+          const improvementStats = {
+            retrievalFailureRecovery: (rq1["0"] || 0) - (rq2["0"] || 0),
+            retrievalRelevancyImprovement: ((rq2["2"] || 0) + (rq2["3"] || 0)) - ((rq1["2"] || 0) + (rq1["3"] || 0)),
+            hallucinationReduction: (aq2["0"] || 0) - (aq1["0"] || 0),
+            answerQualityImprovement: ((aq2["2"] || 0) + (aq2["3"] || 0)) - ((aq1["2"] || 0) + (aq1["3"] || 0)),
+          };
+          const rcaCiResult = computeAQCI(
+            data.rca_records_1.map(r => ({ answer_quality_score: r.new_answer_quality_score })),
+            data.rca_records_2.map(r => ({ answer_quality_score: r.new_answer_quality_score })),
+          );
+          setRcaData({ hasReEvalRows, controlSuggestions, improvementStats, rag2Better: rcaCiResult?.rag2Better === true });
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
         } else if (data.status === "error") {
@@ -1197,6 +1224,48 @@ function ABTestPage({ selectedDataset }) {
                       borderRadius: "8px",
                       padding: "20px",
                     }}>
+                      {rcaData.rag2Better && rcaData.improvementStats && (
+                        <div style={{ marginBottom: "24px", paddingBottom: "20px", borderBottom: "1px solid #e0e0e0" }}>
+                          <h3 style={{ color: "#800000", marginBottom: "16px", marginTop: 0 }}>📊 Improvement Stats</h3>
+                          <div style={{ display: "flex" }}>
+                            <div style={{ flex: 1, paddingRight: "20px" }}>
+                              <div style={{ fontWeight: "bold", marginBottom: "10px", color: "#555", fontSize: "0.9rem", borderBottom: "1px solid #eee", paddingBottom: "6px" }}>Retrieval Quality</div>
+                              {[
+                                { label: "Retrieval Failure Recovery", value: rcaData.improvementStats.retrievalFailureRecovery, goodWhenPositive: true },
+                                { label: "Retrieval Relevancy Improvement", value: rcaData.improvementStats.retrievalRelevancyImprovement, goodWhenPositive: true },
+                              ].map(({ label, value, goodWhenPositive }) => {
+                                const v = Number(value) || 0;
+                                let color = "#000";
+                                if (v !== 0) color = (goodWhenPositive ? v > 0 : v < 0) ? "#1a6937" : "#c0392b";
+                                return (
+                                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", fontSize: "0.88rem" }}>
+                                    <span style={{ color: "#444" }}>{label}</span>
+                                    <span style={{ fontWeight: "bold", marginLeft: "12px", color }}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div style={{ borderLeft: "1px dashed #ccc", margin: "0 16px", flexShrink: 0 }} />
+                            <div style={{ flex: 1, paddingLeft: "4px" }}>
+                              <div style={{ fontWeight: "bold", marginBottom: "10px", color: "#555", fontSize: "0.9rem", borderBottom: "1px solid #eee", paddingBottom: "6px" }}>Answer Quality</div>
+                              {[
+                                { label: "Hallucination Reduction", value: rcaData.improvementStats.hallucinationReduction, goodWhenPositive: false },
+                                { label: "Answer Quality Improvement", value: rcaData.improvementStats.answerQualityImprovement, goodWhenPositive: true },
+                              ].map(({ label, value, goodWhenPositive }) => {
+                                const v = Number(value) || 0;
+                                let color = "#000";
+                                if (v !== 0) color = (goodWhenPositive ? v > 0 : v < 0) ? "#1a6937" : "#c0392b";
+                                return (
+                                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", fontSize: "0.88rem" }}>
+                                    <span style={{ color: "#444" }}>{label}</span>
+                                    <span style={{ fontWeight: "bold", marginLeft: "12px", color }}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <h3 style={{ color: "#800000", marginBottom: "16px", marginTop: 0 }}>✅ Suggested Action Items</h3>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 0 }}>
                         {/* Left: checklist */}
