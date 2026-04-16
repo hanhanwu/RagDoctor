@@ -177,8 +177,8 @@ function computeAQCI(records1, records2) {
   const n = Math.min(records1.length, records2.length);
   const diffs = [];
   for (let i = 0; i < n; i++) {
-    const s1 = Number(records1[i]?.answer_quality_score);
-    const s2 = Number(records2[i]?.answer_quality_score);
+    const s1 = Number(records1[i]?.new_answer_quality_score);
+    const s2 = Number(records2[i]?.new_answer_quality_score);
     if (!isNaN(s1) && !isNaN(s2)) diffs.push(s2 - s1);
   }
   if (diffs.length < 2) return null;
@@ -904,10 +904,7 @@ function ABTestPage({ selectedDataset }) {
             hallucinationReduction: (aq2["0"] || 0) - (aq1["0"] || 0),
             answerQualityImprovement: ((aq2["2"] || 0) + (aq2["3"] || 0)) - ((aq1["2"] || 0) + (aq1["3"] || 0)),
           };
-          const rcaCiResult = computeAQCI(
-            data.rca_records_1.map(r => ({ answer_quality_score: r.new_answer_quality_score })),
-            data.rca_records_2.map(r => ({ answer_quality_score: r.new_answer_quality_score })),
-          );
+          const rcaCiResult = computeAQCI(data.rca_records_1, data.rca_records_2);
           setRcaData({ hasReEvalRows, controlSuggestions, improvementStats, rag2Better: rcaCiResult?.rag2Better === true });
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
