@@ -796,6 +796,9 @@ function ABTestPage({ selectedDataset }) {
   const ciResultRef = useRef(null);
   ciResultRef.current = ciResult;
 
+  const evalResultsRef = useRef(evalResults);
+  evalResultsRef.current = evalResults;
+
   // Keep a live ref of rag2 values to avoid stale closures in the eager-update effect
   const rag2ValuesRef = useRef({ rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM });
   rag2ValuesRef.current = { rag2Model, rag2TopN, rag2SemanticWeight, rag2AGLLM };
@@ -894,17 +897,26 @@ function ABTestPage({ selectedDataset }) {
           const controlAggReview = controlGroup === "rag1" ? results.agg_review_1 : results.agg_review_2;
           const hasReEvalRows = controlItems.some(item => item?.needs_re_eval === 1);
           const controlSuggestions = parseSuggestions(controlAggReview?.improvement_suggestions);
-          const rq1 = scorePercentages(data.rca_records_1, 'new_retrieval_quality_score');
-          const rq2 = scorePercentages(data.rca_records_2, 'new_retrieval_quality_score');
-          const aq1 = scorePercentages(data.rca_records_1, 'new_answer_quality_score');
-          const aq2 = scorePercentages(data.rca_records_2, 'new_answer_quality_score');
+          const countsToPercentages = (counts) => {
+            if (!counts) return {};
+            const total = Object.values(counts).reduce((s, v) => s + v, 0);
+            if (!total) return {};
+            const pcts = {};
+            for (const k in counts) pcts[k] = counts[k] / total * 100;
+            return pcts;
+          };
+          const er = evalResultsRef.current;
+          const rq1 = countsToPercentages(er?.rag1?.retrieval_quality_counts);
+          const rq2 = countsToPercentages(er?.rag2?.retrieval_quality_counts);
+          const aq1 = countsToPercentages(er?.rag1?.answer_quality_counts);
+          const aq2 = countsToPercentages(er?.rag2?.answer_quality_counts);
           const improvementStats = {
             retrievalFailureRecovery: (rq1["0"] || 0) - (rq2["0"] || 0),
             retrievalRelevancyImprovement: ((rq2["2"] || 0) + (rq2["3"] || 0)) - ((rq1["2"] || 0) + (rq1["3"] || 0)),
-            hallucinationReduction: (aq2["0"] || 0) - (aq1["0"] || 0),
+            hallucinationReduction: (aq1["0"] || 0) - (aq2["0"] || 0),
             answerQualityImprovement: ((aq2["2"] || 0) + (aq2["3"] || 0)) - ((aq1["2"] || 0) + (aq1["3"] || 0)),
           };
-          const rcaCiResult = computeAQCI(data.rca_records_1, data.rca_records_2);
+          const rcaCiResult = computeAQCI(er?.rag1?.eval_records, er?.rag2?.eval_records);
           setRcaData({ hasReEvalRows, controlSuggestions, improvementStats, rag2Better: rcaCiResult?.rag2Better === true });
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
@@ -1246,7 +1258,7 @@ function ABTestPage({ selectedDataset }) {
                             <div style={{ flex: 1, paddingLeft: "4px" }}>
                               <div style={{ fontWeight: "bold", marginBottom: "10px", color: "#555", fontSize: "0.9rem", borderBottom: "1px solid #eee", paddingBottom: "6px" }}>Answer Quality</div>
                               {[
-                                { label: "Hallucination Reduction", value: rcaData.improvementStats.hallucinationReduction, goodWhenPositive: false },
+                                { label: "Hallucination Reduction", value: rcaData.improvementStats.hallucinationReduction, goodWhenPositive: true },
                                 { label: "Answer Quality Improvement", value: rcaData.improvementStats.answerQualityImprovement, goodWhenPositive: true },
                               ].map(({ label, value, goodWhenPositive }) => {
                                 const v = Number(value) || 0;
