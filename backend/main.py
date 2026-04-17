@@ -108,6 +108,46 @@ def _db_save_rca(entries: list) -> None:
         conn.close()
 
 
+# ── Compare DB cache helpers ──────────────────────────────────────────────────
+def _db_fetch_cached_compare(hash_1: str, hash_2: str):
+    """Return compare_patterns list if this pair is cached, else None.
+    Always query with sorted hashes to be order-independent."""
+    h1, h2 = sorted([hash_1, hash_2])
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT compare_patterns FROM existing_compare_output WHERE config_hash_1 = %s AND config_hash_2 = %s",
+            (h1, h2)
+        )
+        row = cur.fetchone()
+        cur.close()
+    finally:
+        conn.close()
+    return row[0] if row else None
+
+
+def _db_save_compare(hash_1: str, hash_2: str, compare_patterns: list) -> None:
+    """Persist compare_patterns for a pair — skips on conflict.
+    Always inserts with sorted hashes to be order-independent."""
+    h1, h2 = sorted([hash_1, hash_2])
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO existing_compare_output (config_hash_1, config_hash_2, compare_patterns)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (config_hash_1, config_hash_2) DO NOTHING
+            """,
+            (h1, h2, json.dumps(compare_patterns))
+        )
+        cur.close()
+    finally:
+        conn.close()
+
+
 def fetch_raw_data(dataset_name: str):
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -351,14 +391,25 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
         # ── 3b. Per-record comparison + summarize patterns (only when configs differ) ─
         compare_patterns = None
         if not same_config:
-            compare_records = build_compare_df(rca_1, rca_2, rag1_config, rag2_config)
-            if len(compare_records) > 0:
-                compare_df = await run_compare_2rags(compare_records, rca_llm)
-                compare_patterns = await run_summarize_patterns(
-                    compare_df, rca_llm,
-                    text_col='lessons_learned',
-                    pattern_focus='what RAG configuration changes led to performance differences'
-                )
+            compare_patterns = await asyncio.to_thread(
+                _db_fetch_cached_compare, config_hashes[0], config_hashes[1]
+            )
+            if compare_patterns is None:
+                compare_records = build_compare_df(rca_1, rca_2, rag1_config, rag2_config)
+                if len(compare_records) > 0:
+                    compare_df = await run_compare_2rags(compare_records, rca_llm)
+                    compare_patterns = await run_summarize_patterns(
+                        compare_df, rca_llm,
+                        text_col='lessons_learned',
+                        pattern_focus='what RAG configuration changes led to performance differences'
+                    )
+                    if compare_patterns:
+                        await asyncio.to_thread(
+                            _db_save_compare, config_hashes[0], config_hashes[1], compare_patterns
+                        )
+                        print(f"Compare patterns saved for {config_hashes[0]} vs {config_hashes[1]}")
+            else:
+                print(f"Compare cache hit for {config_hashes[0]} vs {config_hashes[1]}")
 
         # ── 4. Store in memory for polling ────────────────────────────────────
         _rca_results[rca_job_id] = {

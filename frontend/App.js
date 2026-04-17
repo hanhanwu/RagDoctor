@@ -919,9 +919,8 @@ function ABTestPage({ selectedDataset }) {
           const controlAggReview = controlGroup === "rag1" ? results.agg_review_1 : results.agg_review_2;
           const hasReEvalRows = controlItems.some(item => item?.needs_re_eval === 1);
           const rag2Better = ciResultRef.current?.rag2Better === true;
-          const controlSuggestions = rag2Better && data.compare_patterns?.length > 0
-            ? data.compare_patterns
-            : parseSuggestions(controlAggReview?.improvement_suggestions);
+          const controlSuggestions = parseSuggestions(controlAggReview?.improvement_suggestions);
+          const compareLessons = rag2Better ? (data.compare_patterns || []) : [];
           const countsToPercentages = (counts) => {
             if (!counts) return {};
             const total = Object.values(counts).reduce((s, v) => s + v, 0);
@@ -942,7 +941,7 @@ function ABTestPage({ selectedDataset }) {
             answerQualityImprovement: ((aq2["2"] || 0) + (aq2["3"] || 0)) - ((aq1["2"] || 0) + (aq1["3"] || 0)),
           };
           const rcaCiResult = computeAQCI(er?.rag1?.eval_records, er?.rag2?.eval_records);
-          setRcaData({ hasReEvalRows, controlSuggestions, improvementStats, rag2Better: rcaCiResult?.rag2Better === true, hasCompareLessons: rag2Better && data.compare_patterns?.length > 0 });
+          setRcaData({ hasReEvalRows, controlSuggestions, compareLessons, improvementStats, rag2Better: rcaCiResult?.rag2Better === true });
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
         } else if (data.status === "error") {
@@ -1324,7 +1323,7 @@ function ABTestPage({ selectedDataset }) {
                       }} />
                       {rcaStatus === "running" ? "Running now..." : (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-                          🔍 Root Cause Analysis
+                          {ciResult?.rag2Better ? "💡 Lessons Learned & Improvement" : "🔍 Root Cause Analysis"}
                         </span>
                       )}
                     </button>
@@ -1339,41 +1338,60 @@ function ABTestPage({ selectedDataset }) {
                       padding: "20px",
                     }}>
                       <h3 style={{ color: "#800000", marginBottom: "16px", marginTop: 0 }}>
-                        {rcaData.hasCompareLessons ? "🔍 Lessons Learned: Why RAG 2 Outperformed RAG 1" : "☑️ Suggested Action Items"}
+                        {rcaData.compareLessons?.length > 0 ? "💡 Lessons Learned & Improvement" : "☑️ Suggested Action Items"}
                       </h3>
                       <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
-                        {/* Left: checklist */}
+                        {/* Left: content */}
                         <div style={{ flex: 1, paddingRight: "16px" }}>
-                          {rcaData.hasReEvalRows && (
-                            <label style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                              gap: "10px",
-                              marginBottom: "14px",
-                              cursor: "pointer",
-                              fontWeight: "bold",
-                              color: "#c0392b",
-                            }}>
-                              <input
-                                type="checkbox"
-                                onChange={(e) => {
-                                  setCheckedSuggestionsCount(prev => prev + (e.target.checked ? 1 : -1));
-                                  if (e.target.checked) {
-                                    window.open(`${window.location.pathname}?view=rca&dataset=${encodeURIComponent(selectedDataset)}`, '_blank');
-                                  }
-                                }}
-                                style={{ marginTop: "3px", accentColor: "#800000", width: "16px", height: "16px", flexShrink: 0 }}
-                              />
-                              ⚠️ Re-evaluate flagged records (opens detailed table in new tab)
-                            </label>
+                          {/* Improvement section */}
+                          {(rcaData.hasReEvalRows || rcaData.controlSuggestions?.length > 0) && (
+                            <div style={{ marginBottom: rcaData.compareLessons?.length > 0 ? "20px" : 0 }}>
+                              {rcaData.compareLessons?.length > 0 && (
+                                <div style={{ fontWeight: "bold", color: "#555", fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Improvement</div>
+                              )}
+                              {rcaData.hasReEvalRows && (
+                                <label style={{
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  gap: "10px",
+                                  marginBottom: "14px",
+                                  cursor: "pointer",
+                                  fontWeight: "bold",
+                                  color: "#c0392b",
+                                }}>
+                                  <input
+                                    type="checkbox"
+                                    onChange={(e) => {
+                                      setCheckedSuggestionsCount(prev => prev + (e.target.checked ? 1 : -1));
+                                      if (e.target.checked) {
+                                        window.open(`${window.location.pathname}?view=rca&dataset=${encodeURIComponent(selectedDataset)}`, '_blank');
+                                      }
+                                    }}
+                                    style={{ marginTop: "3px", accentColor: "#800000", width: "16px", height: "16px", flexShrink: 0 }}
+                                  />
+                                  ⚠️ Re-evaluate flagged records
+                                </label>
+                              )}
+                              {rcaData.controlSuggestions.map((suggestion, i) => (
+                                <SuggestionItem
+                                  key={i}
+                                  text={suggestion}
+                                  onCheckedChange={(isChecked) => setCheckedSuggestionsCount(prev => prev + (isChecked ? 1 : -1))}
+                                />
+                              ))}
+                            </div>
                           )}
-                          {rcaData.controlSuggestions.map((suggestion, i) => (
-                            <SuggestionItem
-                              key={i}
-                              text={suggestion}
-                              onCheckedChange={(isChecked) => setCheckedSuggestionsCount(prev => prev + (isChecked ? 1 : -1))}
-                            />
-                          ))}
+                          {/* Lessons Learned section */}
+                          {rcaData.compareLessons?.length > 0 && (
+                            <div>
+                              <div style={{ fontWeight: "bold", color: "#555", fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Lessons Learned</div>
+                              <ul style={{ margin: 0, paddingLeft: "20px", lineHeight: 1.7 }}>
+                                {rcaData.compareLessons.map((lesson, i) => (
+                                  <li key={i} style={{ marginBottom: "6px" }}>{lesson}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                         {/* Spacer between checklist and actions */}
                         <div style={{ width: "16px", flexShrink: 0 }} />
