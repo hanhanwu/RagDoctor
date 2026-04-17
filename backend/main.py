@@ -351,9 +351,9 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
         # ── 3b. Per-record comparison + summarize patterns (only when configs differ) ─
         compare_patterns = None
         if not same_config:
-            compare_df = build_compare_df(rca_1, rca_2, rag1_config, rag2_config)
-            if len(compare_df) > 0:
-                compare_df = await run_compare_2rags(compare_df, rca_llm)
+            compare_records = build_compare_df(rca_1, rca_2, rag1_config, rag2_config)
+            if len(compare_records) > 0:
+                compare_df = await run_compare_2rags(compare_records, rca_llm)
                 compare_patterns = await run_summarize_patterns(
                     compare_df, rca_llm,
                     text_col='lessons_learned',

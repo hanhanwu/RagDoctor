@@ -674,7 +674,7 @@ async def compare_2rags_async(llm, record):
     return await _invoke_with_retry(chain, {k: record[k] for k in _COMPARE_2RAGS_FIELDS})
 
 
-async def run_compare_2rags(input_df, llm, concurrency=2):
+async def run_compare_2rags(input_records, llm, concurrency=2):
     sem = asyncio.Semaphore(concurrency)
 
     async def sem_task(record):
@@ -683,7 +683,6 @@ async def run_compare_2rags(input_df, llm, concurrency=2):
             record['lessons_learned'] = result.lessons_learned
             return record
 
-    input_records = input_df.to_dict(orient='records')
     output_lst = await asyncio.gather(*[sem_task(record) for record in input_records])
     return pd.DataFrame(output_lst)
 
@@ -727,7 +726,7 @@ def build_compare_df(rca_1, rca_2, rag1_config, rag2_config):
             'rag2_rq_score_and_reasons': _fmt_rq(r2),
             'rag2_aq_score_and_reasons': _fmt_aq(r2),
         })
-    return pd.DataFrame(rows)
+    return rows
 # ------------------------------------------ COMPARE 2 RAGs------------------------------------------ #
 
 
