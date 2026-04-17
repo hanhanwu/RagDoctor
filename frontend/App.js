@@ -918,7 +918,10 @@ function ABTestPage({ selectedDataset }) {
           const controlItems = results[controlGroup];
           const controlAggReview = controlGroup === "rag1" ? results.agg_review_1 : results.agg_review_2;
           const hasReEvalRows = controlItems.some(item => item?.needs_re_eval === 1);
-          const controlSuggestions = parseSuggestions(controlAggReview?.improvement_suggestions);
+          const rag2Better = ciResultRef.current?.rag2Better === true;
+          const controlSuggestions = rag2Better && data.compare_patterns?.length > 0
+            ? data.compare_patterns
+            : parseSuggestions(controlAggReview?.improvement_suggestions);
           const countsToPercentages = (counts) => {
             if (!counts) return {};
             const total = Object.values(counts).reduce((s, v) => s + v, 0);
@@ -939,7 +942,7 @@ function ABTestPage({ selectedDataset }) {
             answerQualityImprovement: ((aq2["2"] || 0) + (aq2["3"] || 0)) - ((aq1["2"] || 0) + (aq1["3"] || 0)),
           };
           const rcaCiResult = computeAQCI(er?.rag1?.eval_records, er?.rag2?.eval_records);
-          setRcaData({ hasReEvalRows, controlSuggestions, improvementStats, rag2Better: rcaCiResult?.rag2Better === true });
+          setRcaData({ hasReEvalRows, controlSuggestions, improvementStats, rag2Better: rcaCiResult?.rag2Better === true, hasCompareLessons: rag2Better && data.compare_patterns?.length > 0 });
           setRcaStatus("done");
           clearInterval(rcaPollRef.current);
         } else if (data.status === "error") {
@@ -1335,7 +1338,9 @@ function ABTestPage({ selectedDataset }) {
                       borderRadius: "8px",
                       padding: "20px",
                     }}>
-                      <h3 style={{ color: "#800000", marginBottom: "16px", marginTop: 0 }}>☑️ Suggested Action Items</h3>
+                      <h3 style={{ color: "#800000", marginBottom: "16px", marginTop: 0 }}>
+                        {rcaData.hasCompareLessons ? "🔍 Lessons Learned: Why RAG 2 Outperformed RAG 1" : "☑️ Suggested Action Items"}
+                      </h3>
                       <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
                         {/* Left: checklist */}
                         <div style={{ flex: 1, paddingRight: "16px" }}>

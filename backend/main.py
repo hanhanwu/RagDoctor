@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import make_url
 from typing import Optional
 
-from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_review, FINANCIAL_RAG_SYSTEM_PROMPT, rca_llm
+from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_review, run_compare_2rags, run_summarize_patterns, build_compare_df, FINANCIAL_RAG_SYSTEM_PROMPT, rca_llm
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -348,6 +348,18 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
             await asyncio.to_thread(_db_save_rca, to_save)
             print(f"RCA results saved for config hashes: {[e[0] for e in to_save]}")
 
+        # ── 3b. Per-record comparison + summarize patterns (only when configs differ) ─
+        compare_patterns = None
+        if not same_config:
+            compare_df = build_compare_df(rca_1, rca_2, rag1_config, rag2_config)
+            if len(compare_df) > 0:
+                compare_df = await run_compare_2rags(compare_df, rca_llm)
+                compare_patterns = await run_summarize_patterns(
+                    compare_df, rca_llm,
+                    text_col='lessons_learned',
+                    pattern_focus='what RAG configuration changes led to performance differences'
+                )
+
         # ── 4. Store in memory for polling ────────────────────────────────────
         _rca_results[rca_job_id] = {
             "status": "done",
@@ -356,6 +368,7 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
             "rca_records_2": list(rca_2),
             "agg_review_1": agg_review_1_dict,
             "agg_review_2": agg_review_2_dict,
+            "compare_patterns": compare_patterns,
         }
     except Exception as e:
         traceback.print_exc()

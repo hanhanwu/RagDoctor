@@ -323,3 +323,124 @@ review_rag_system_template: |
     Your output should follow this format:
     {format_instructions}
 # ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
+
+
+# ------------------------------------------ COMPARE 2 RAGs ------------------------------------------ #
+compare_2rags_template: |
+    ### RESPONSIBILITIES ###
+        You're an expert of RAG system, reviewing 2 RAGs pipelines, RAG2 is statistically better than RAG1.
+        You're responsible for finding useful lessons learned about the performance difference between RAG1 and RAG2.
+        
+    ### INSTRUCTIONS ###
+        * Compare RAG1_SETTINGS and RAG2_SETTINGS, find out the differences in their system design.
+        * Look at RAG1_RETRIEVAL_QUALITY_SCORE_AND_REASONS and RAG2_RETRIEVAL_QUALITY_SCORE_AND_REASONS, analyze the reasons behind their retrieval quality performance.
+        * Look at RAG1_ANSWER_QUALITY_SCORE_AND_REASONS and RAG2_ANSWER_QUALITY_SCORE_AND_REASONS, analyze the reasons behind their answer quality performance.
+        * Then explain the potential reasons of the differences of their performance. Have to mention "RAG1" or "RAG2" in your explanation.
+
+    ### OUTPUT FORMAT ###
+        {{
+            "lessons_learned": "Explanation of potential root causes of score differences between RAG1 and RAG2",
+        }}
+        - Make sure the text in lessons_learned is brief but comprehensive, less than 100 tokens if you can.
+
+    ### EXAMPLE OUTPUT ###
+        {{
+            "lessons_learned": "RAG2 uses better LLM for answer genration, that's why answer quality got higher score.",
+        }}
+
+        {{
+            "lessons_learned": "RAG2 uses better embedding more and higher weights for semantic search, that's why its retrieval quality is higher.
+                                But its answer quality is lower can be caused by the randoness of the LLM used for answer generation.",
+        }}
+
+
+    Here is the RAG1_SETTINGS:
+    {rag1_settings}
+
+    Here is the RAG1_RETRIEVAL_QUALITY_SCORE_AND_REASONS:
+    {rag1_rq_score_and_reasons}
+
+    Here is the RAG1_ANSWER_QUALITY_SCORE_AND_REASONS:
+    {rag1_aq_score_and_reasons}
+
+    Here is the RAG2_SETTINGS:
+    {rag2_settings}
+
+    Here is the RAG2_RETRIEVAL_QUALITY_SCORE_AND_REASONS:
+    {rag2_rq_score_and_reasons}
+
+    Here is the RAG2_ANSWER_QUALITY_SCORE_AND_REASONS:
+    {rag2_aq_score_and_reasons}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ COMPARE 2 RAGs ------------------------------------------ #
+
+
+# ------------------------------------------ WHY LOWER SCORE ------------------------------------------ #
+why_lower_score_template: |
+    ### RESPONSIBILITIES ###
+        You're an expert of RAG system, reviewing a RAG pipeline's settings and performance analysis.
+        You're responsible for finding useful insights about why the performance didn't reach the highest score.
+        
+    ### INSTRUCTIONS ###
+        * Look at RETRIEVAL_QUALITY_SCORE_AND_REASONS and ANSWER_QUALITY_SCORE_AND_REASONS, understand the reasons behind their retrieval and answer quality performance.
+        * Summarize the potential reasons why answer quality score didn't reach 3.
+
+    ### OUTPUT FORMAT ###
+        {{
+            "insights": "Explanation of potential root causes of why answer quality score didn't reach 3",
+        }}
+        - Make sure the text in insights is brief but comprehensive, less than 100 tokens if you can.
+
+    ### EXAMPLE OUTPUT ###
+        {{
+            "insights": "The retrieval quality has some score 1 and 0, which means some retrieved documents are not relevant to the user query, which can cause the low answer quality score.",
+        }}
+
+        {{
+            "insights": "Although retrieval was good with score 3, the LLM used for answer generation is not good enough, which can cause the low answer quality score.",
+        }}
+
+
+    Here is the RAG_SETTINGS:
+    {rag_settings}
+
+    Here is the RAG_RETRIEVAL_QUALITY_SCORE_AND_REASONS:
+    {rag_rq_score_and_reasons}
+
+    Here is the RAG_ANSWER_QUALITY_SCORE_AND_REASONS:
+    {rag_aq_score_and_reasons}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ WHY LOWER SCORE  ------------------------------------------ #
+
+
+# ------------------------------------------ SUMMARIZE PATTERNS ------------------------------------------ #
+summarize_patterns_template: |
+    ### INSTRUCTIONS ###
+        - Given a list of text TEXT_LIST and which PATTERN_FOCUS to focus on, summarize the patterns that frequently appeared.
+        - Only choose the most frequent patterns, and each pattern can explain the PATTERN_FOCUS well.
+        - Sumamrize no more than 3 patterns, less patterns is better if they can cover the majority of the TEXT_LIST.
+        - Each pattern has its unique focus angle, avoid overlapping in the focus of each pattern.
+        - Each pattern in the list has *no more than 30 words*, brief but comprehensive.
+    
+    ### EXAMPLE OUTPUT ###
+        {{
+            "patterns": [
+                "RAG2 has higher semantic weights in retrieval, which leads to better retrieval quality.",
+                "RAG2 uses better embedding model, which leads to better retrieval quality.",
+                "RAG2 uses better LLM for answer generation, which leads to better answer quality."
+            ]
+        }}
+
+    Here's the TEXT_LIST:
+    {text_list}
+
+    Here's the PATTERN_FOCUS to focus on:
+    {pattern_focus}
+
+    Your output should follow this format:
+    {format_instructions}
+# ------------------------------------------ SUMMARIZE PATTERNS ------------------------------------------ #

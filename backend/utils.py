@@ -653,6 +653,138 @@ async def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, a
 # ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
 
 
+# ------------------------------------------ COMPARE 2 RAGs ------------------------------------------ #
+class Compare2RAGs(BaseModel):
+    lessons_learned: str = Field(description="Explain potential reasons of 2RAG's performance differences.")
+
+_COMPARE_2RAGS_FIELDS = [
+    "rag1_settings", "rag1_rq_score_and_reasons", "rag1_aq_score_and_reasons",
+    "rag2_settings", "rag2_rq_score_and_reasons", "rag2_aq_score_and_reasons",
+]
+
+async def compare_2rags_async(llm, record):
+    base_parser = PydanticOutputParser(pydantic_object=Compare2RAGs)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['compare_2rags_template'],
+        input_variables=_COMPARE_2RAGS_FIELDS,
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    return await _invoke_with_retry(chain, {k: record[k] for k in _COMPARE_2RAGS_FIELDS})
+
+
+async def run_compare_2rags(input_df, llm, concurrency=2):
+    sem = asyncio.Semaphore(concurrency)
+
+    async def sem_task(record):
+        async with sem:
+            result = await compare_2rags_async(llm, record)
+            record['lessons_learned'] = result.lessons_learned
+            return record
+
+    input_records = input_df.to_dict(orient='records')
+    output_lst = await asyncio.gather(*[sem_task(record) for record in input_records])
+    return pd.DataFrame(output_lst)
+
+
+def build_compare_df(rca_1, rca_2, rag1_config, rag2_config):
+    """Zip rca_1 and rca_2 records by query to form _COMPARE_2RAGS_FIELDS columns.
+
+    Settings strings are computed once and reused (O(1)), score+reason strings
+    are simple field lookups (O(N)). No LLM calls — pure Python formatting.
+    Only includes records where needs_re_eval == 0 on both sides.
+    """
+    def _fmt_config(cfg):
+        return (f"Embedding model: {cfg.get('embedding_model', '')}, "
+                f"Top N: {cfg.get('top_n', 0)}, "
+                f"Semantic weight: {cfg.get('semantic_weight', 0.0)}, "
+                f"Answer LLM: {cfg.get('answer_gen_llm', '')}")
+
+    def _fmt_rq(r):
+        return f"Score: {r.get('new_retrieval_quality_score', '')}\nReason: {r.get('rq_reasoning', '')}"
+
+    def _fmt_aq(r):
+        return f"Score: {r.get('new_answer_quality_score', '')}\nReason: {r.get('aq_reasoning', '')}"
+
+    rag1_settings = _fmt_config(rag1_config)
+    rag2_settings = _fmt_config(rag2_config)
+    r2_by_query = {r['query']: r for r in rca_2}
+
+    rows = []
+    for r1 in rca_1:
+        r2 = r2_by_query.get(r1['query'])
+        if r2 is None:
+            continue
+        if r1.get('needs_re_eval') == 1 or r2.get('needs_re_eval') == 1:
+            continue
+        rows.append({
+            'query': r1['query'],
+            'rag1_settings': rag1_settings,
+            'rag1_rq_score_and_reasons': _fmt_rq(r1),
+            'rag1_aq_score_and_reasons': _fmt_aq(r1),
+            'rag2_settings': rag2_settings,
+            'rag2_rq_score_and_reasons': _fmt_rq(r2),
+            'rag2_aq_score_and_reasons': _fmt_aq(r2),
+        })
+    return pd.DataFrame(rows)
+# ------------------------------------------ COMPARE 2 RAGs------------------------------------------ #
+
+
+# ------------------------------------------ WHY LOWER SCORE  ------------------------------------------ #
+class WhyLowerScore(BaseModel):
+    insights: str = Field(description="Explain potential root causes of why answer quality score didn't reach 3.")
+
+_WHY_LOWER_SCORE_FIELDS = [
+    "rag_settings", "rag_rq_score_and_reasons", "rag_aq_score_and_reasons",
+]
+
+async def why_lower_score_async(llm, record):
+    base_parser = PydanticOutputParser(pydantic_object=WhyLowerScore)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['why_lower_score_template'],
+        input_variables=_WHY_LOWER_SCORE_FIELDS,
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    return await _invoke_with_retry(chain, {k: record[k] for k in _WHY_LOWER_SCORE_FIELDS})
+
+
+async def run_why_lower_score(input_df, llm, concurrency=2):
+    sem = asyncio.Semaphore(concurrency)
+
+    async def sem_task(record):
+        async with sem:
+            result = await why_lower_score_async(llm, record)
+            record['insights'] = result.insights
+            return record
+
+    input_records = input_df.to_dict(orient='records')
+    output_lst = await asyncio.gather(*[sem_task(record) for record in input_records])
+    return pd.DataFrame(output_lst)
+# ------------------------------------------ WHY LOWER SCORE  ------------------------------------------ #
+
+
+# ------------------------------------------ SUMMARIZE PATTERNS ------------------------------------------ #
+class SummarizePatterns(BaseModel):
+    patterns: list[str] = Field(description="Summarize the patterns from given text.")
+
+async def run_summarize_patterns(input_df, llm, text_col, pattern_focus):
+    base_parser = PydanticOutputParser(pydantic_object=SummarizePatterns)
+    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
+    prompt = PromptTemplate(
+        template=prompt_versions['summarize_patterns_template'],
+        input_variables=["text_list", "pattern_focus"],
+        partial_variables={"format_instructions": output_parser.get_format_instructions()},
+    )
+    chain = prompt | llm | output_parser
+    text_list = input_df[text_col].tolist()
+    result = await _invoke_with_retry(chain, {"text_list": text_list, "pattern_focus": pattern_focus})
+    return result.patterns
+# ------------------------------------------ SUMMARIZE PATTERNS ------------------------------------------ #
+
+
 async def run_rca(record):
     query = record['query']
 
