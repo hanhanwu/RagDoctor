@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import make_url
 from typing import Optional
 
-from .utils import run_all_in_processes, run_auto_eval, run_rca, run_agg_rag_review, run_compare_2rags, run_summarize_patterns, build_compare_df, FINANCIAL_RAG_SYSTEM_PROMPT, rca_llm
+from .utils import run_all_in_processes, run_auto_eval, run_rca, run_compare_2rags, run_summarize_patterns, build_compare_df, rca_llm
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,35 +73,35 @@ db_url = make_url(DATABASE_URL)
 # ── RCA DB cache helpers ──────────────────────────────────────────────────────
 
 def _db_fetch_cached_rca(config_hashes: list) -> dict:
-    """Return {config_hash: {rca_records, agg_review}} for any hashes found in DB."""
+    """Return {config_hash: {rca_records}} for any hashes found in DB."""
     conn = psycopg2.connect(DATABASE_URL)
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT config_hash, rca_records, agg_review FROM existing_rca_output WHERE config_hash = ANY(%s)",
+            "SELECT config_hash, rca_records FROM existing_rca_output WHERE config_hash = ANY(%s)",
             (config_hashes,)
         )
         rows = cur.fetchall()
         cur.close()
     finally:
         conn.close()
-    return {row[0]: {"rca_records": row[1], "agg_review": row[2]} for row in rows}
+    return {row[0]: {"rca_records": row[1]} for row in rows}
 
 
 def _db_save_rca(entries: list) -> None:
-    """Save [(config_hash, rca_records, agg_review), ...] — skips on conflict."""
+    """Save [(config_hash, rca_records), ...] — skips on conflict."""
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = True
     try:
         cur = conn.cursor()
-        for config_hash, rca_records, agg_review in entries:
+        for config_hash, rca_records in entries:
             cur.execute(
                 """
-                INSERT INTO existing_rca_output (config_hash, rca_records, agg_review)
-                VALUES (%s, %s, %s)
+                INSERT INTO existing_rca_output (config_hash, rca_records)
+                VALUES (%s, %s)
                 ON CONFLICT (config_hash) DO NOTHING
                 """,
-                (config_hash, json.dumps(rca_records), json.dumps(agg_review))
+                (config_hash, json.dumps(rca_records))
             )
         cur.close()
     finally:
@@ -311,17 +311,6 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
         rag2_config = job.get("rag2_config", {})
         same_config = len(config_hashes) >= 2 and config_hashes[0] == config_hashes[1]
 
-        def _to_dict(r):
-            return {"root_cause_analysis": r.root_cause_analysis,
-                    "improvement_suggestions": r.improvement_suggestions} if r else None
-
-        def build_agg_df(rca_records, cfg):
-            df = pd.DataFrame(list(rca_records))
-            df['embedding_model'] = cfg.get('embedding_model', '')
-            df['top_n_retrieval']  = cfg.get('top_n', 0)
-            df['semantic_weight']  = cfg.get('semantic_weight', 0.0)
-            df['answer_gen_llm']   = cfg.get('answer_gen_llm', '')
-            return df[df['needs_re_eval'] == 0]
 
         # ── 1. Check DB cache ─────────────────────────────────────────────────
         unique_hashes = list(dict.fromkeys(config_hashes))  # deduplicated, order preserved
@@ -342,46 +331,25 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
                 asyncio.gather(*[run_rca(r) for r in records_2]),
             )
             rca_1, rca_2 = list(rca_raw[0]), list(rca_raw[1])
-
-            agg_df_1 = build_agg_df(rca_1, rag1_config)
-            agg_df_2 = build_agg_df(rca_2, rag2_config)
-            agg_tasks = []
-            if len(agg_df_1) > 0:
-                agg_tasks.append(run_agg_rag_review(agg_df_1, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
-            if len(agg_df_2) > 0:
-                agg_tasks.append(run_agg_rag_review(agg_df_2, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT))
-            agg_results = list(await asyncio.gather(*agg_tasks))
-            result_iter = iter(agg_results)
-            agg_review_1_dict = _to_dict(next(result_iter) if len(agg_df_1) > 0 else None)
-            agg_review_2_dict = _to_dict(next(result_iter) if len(agg_df_2) > 0 else None)
             to_save = [
-                (config_hashes[0], rca_1, agg_review_1_dict),
-                (config_hashes[1], rca_2, agg_review_2_dict),
+                (config_hashes[0], rca_1),
+                (config_hashes[1], rca_2),
             ]
         else:
             # At least one config is cached — handle individually
             if hash_1_cached:
                 rca_1 = cached[config_hashes[0]]["rca_records"]
-                agg_review_1_dict = cached[config_hashes[0]]["agg_review"]
             else:
                 rca_1 = list(await asyncio.gather(*[run_rca(r) for r in records_1]))
-                agg_df_1 = build_agg_df(rca_1, rag1_config)
-                agg_review_1 = await run_agg_rag_review(agg_df_1, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT) if len(agg_df_1) > 0 else None
-                agg_review_1_dict = _to_dict(agg_review_1)
-                to_save.append((config_hashes[0], rca_1, agg_review_1_dict))
+                to_save.append((config_hashes[0], rca_1))
 
             if same_config:
                 rca_2 = rca_1
-                agg_review_2_dict = agg_review_1_dict
             elif hash_2_cached:
                 rca_2 = cached[config_hashes[1]]["rca_records"]
-                agg_review_2_dict = cached[config_hashes[1]]["agg_review"]
             else:
                 rca_2 = list(await asyncio.gather(*[run_rca(r) for r in records_2]))
-                agg_df_2 = build_agg_df(rca_2, rag2_config)
-                agg_review_2 = await run_agg_rag_review(agg_df_2, rca_llm, FINANCIAL_RAG_SYSTEM_PROMPT) if len(agg_df_2) > 0 else None
-                agg_review_2_dict = _to_dict(agg_review_2)
-                to_save.append((config_hashes[1], rca_2, agg_review_2_dict))
+                to_save.append((config_hashes[1], rca_2))
 
         # ── 3. Persist new results to DB ──────────────────────────────────────
         if to_save:
@@ -417,8 +385,6 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
             "completed_at": time.time(),
             "rca_records_1": list(rca_1),
             "rca_records_2": list(rca_2),
-            "agg_review_1": agg_review_1_dict,
-            "agg_review_2": agg_review_2_dict,
             "compare_patterns": compare_patterns,
         }
     except Exception as e:

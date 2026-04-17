@@ -627,32 +627,6 @@ async def expand_query_async(llm, user_query):
 # ------------------------------------------ QUERY EXPANSION ------------------------------------------ #
 
 
-# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
-class RAGSystemReview(BaseModel):
-    root_cause_analysis: str = Field(description="Explain potential root causes of RAG's answer quality scores.")
-    improvement_suggestions: str = Field(description="Provide suggestions to improve the RAG performance.")
-
-
-async def review_rag_system_async(llm, avg_rq_score, rq_reasons, avg_aq_score, aq_reasons,
-                                system_prompt, rag_config):
-    base_parser = PydanticOutputParser(pydantic_object=RAGSystemReview)
-    output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=llm)
-    prompt = PromptTemplate(
-        template=prompt_versions['review_rag_system_template'],
-        input_variables=["avg_rq_score", "rq_reasons", "avg_aq_score", "aq_reasons",
-                        "system_prompt", "rag_config"],
-        partial_variables={"format_instructions": output_parser.get_format_instructions()},
-    )
-    chain = prompt | llm | output_parser
-    result = await _invoke_with_retry(chain, {
-        "avg_rq_score": avg_rq_score, "rq_reasons": rq_reasons,
-        "avg_aq_score": avg_aq_score, "aq_reasons": aq_reasons,
-        "system_prompt": system_prompt, "rag_config": rag_config
-    })
-    return result
-# ------------------------------------------ REVIEW RAG SYSTEM ------------------------------------------ #
-
-
 # ------------------------------------------ COMPARE 2 RAGs ------------------------------------------ #
 class Compare2RAGs(BaseModel):
     lessons_learned: str = Field(description="Explain potential reasons of 2RAG's performance differences.")
@@ -851,25 +825,3 @@ async def run_rca(record):
     record['root_cause_analysis'] = root_cause_analysis
 
     return record
-
-
-async def run_agg_rag_review(agg_df, rca_llm, system_prompt):
-    avg_rq_score = agg_df['new_retrieval_quality_score'].mean()
-    avg_aq_score = agg_df['new_answer_quality_score'].mean()
-
-    rq_reasons = agg_df['rq_reasoning'].tolist()
-    aq_reasons = agg_df['aq_reasoning'].tolist()
-
-    sample_record = agg_df.iloc[0]
-    rag_config = f"""
-                    - Embedding model: {sample_record['embedding_model']}
-                    - Top N retrieval: {sample_record['top_n_retrieval']}
-                    * It specifies the number of top relevant documents retrieved to assist answer generation.
-                    - Semantic weight: {sample_record['semantic_weight']}
-                    * Semantic weight means the percentage of semantic retrieval, 1 - semantic_weight is the percentage of keyword retrieval.
-                    - Answer generation LLM: {sample_record['answer_gen_llm']}
-                    * The LLM used to generate the answer based on the retrieved content and the query.
-                    """
-
-    return await review_rag_system_async(rca_llm, avg_rq_score, rq_reasons,
-                                         avg_aq_score, aq_reasons, system_prompt, rag_config)

@@ -1323,7 +1323,7 @@ function ABTestPage({ selectedDataset }) {
                       }} />
                       {rcaStatus === "running" ? "Running now..." : (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-                          {ciResult?.rag2Better ? "💡 Lessons Learned & Improvement" : "🔍 Root Cause Analysis"}
+                          {"🔍 Root Cause Analysis"}
                         </span>
                       )}
                     </button>
@@ -1338,7 +1338,7 @@ function ABTestPage({ selectedDataset }) {
                       padding: "20px",
                     }}>
                       <h3 style={{ color: "#800000", marginBottom: "16px", marginTop: 0 }}>
-                        {rcaData.compareLessons?.length > 0 ? "💡 Lessons Learned & Improvement" : "☑️ Suggested Action Items"}
+                        {"☑️ Root Cause Analysis"}
                       </h3>
                       <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
                         {/* Left: content */}
