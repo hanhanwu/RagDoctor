@@ -971,6 +971,13 @@ function ABTestPage({ selectedDataset }) {
     if (ragStatus === "done") setSettingsChangedAfterRCA(false);
   }, [ragStatus]);
 
+  // Auto-trigger RCA as soon as RAG results are ready
+  useEffect(() => {
+    if (ragStatus === "done" && rcaStatus === "idle" && jobId) {
+      handleRunRCA();
+    }
+  }, [ragStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     setCheckedSuggestionsCount(0);
   }, [rcaData]);
@@ -1294,39 +1301,13 @@ function ABTestPage({ selectedDataset }) {
                       )}
                     </>
                   )}
-                  {!settingsChangedAfterRCA && !settingsChangedAfterRAG && rcaStatus !== "done" && (
-                    <button
-                      style={{
-                        marginTop: "66px",
-                        background: "#000",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "6px",
-                        padding: "12px 24px",
-                        fontSize: "1rem",
-                        fontWeight: "bold",
-                        cursor: rcaStatus === "running" ? "not-allowed" : "pointer",
-                        opacity: rcaStatus === "running" ? 0.7 : 1,
-                        position: "relative",
-                        overflow: "hidden",
-                      }}
-                      onClick={handleRunRCA}
-                      disabled={rcaStatus === "running"}
-                    >
-                      <span style={{
-                        position: "absolute",
-                        top: 0, bottom: 0,
-                        left: "-60%",
-                        width: "50%",
-                        background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)",
-                        animation: `progressSlide ${rcaStatus === "running" ? "1s" : "2.2s"} linear infinite`,
-                      }} />
-                      {rcaStatus === "running" ? "Running now..." : (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-                          {"🔍 Root Cause Analysis"}
-                        </span>
-                      )}
-                    </button>
+                  {!settingsChangedAfterRCA && !settingsChangedAfterRAG && rcaStatus === "running" && (
+                    <div style={{ marginTop: "66px", fontSize: "2rem", fontWeight: "bold", color: "#800000" }}>
+                      <span>Running Root Cause Analysis</span>
+                      <span style={{ display: "inline-block", animation: "dotFade 1.5s ease-in-out infinite 0s" }}>.</span>
+                      <span style={{ display: "inline-block", animation: "dotFade 1.5s ease-in-out infinite 0.3s" }}>.</span>
+                      <span style={{ display: "inline-block", animation: "dotFade 1.5s ease-in-out infinite 0.6s" }}>.</span>
+                    </div>
                   )}
                   {!settingsChangedAfterRCA && !settingsChangedAfterRAG && rcaStatus === "done" && rcaData && (
                     <div style={{
