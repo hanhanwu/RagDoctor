@@ -452,7 +452,7 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
                 else:
                     print(f"Compare cache hit for {config_hashes[0]} vs {config_hashes[1]}")
             else:
-                rca_summary_patterns = cached_compare
+                rca_summary_patterns = cached_compare.get("compare_patterns") if cached_compare else None
                 if rca_summary_patterns is None:
                     # Check per-config why_lower_score cache concurrently
                     wls_cached_1, wls_cached_2 = await asyncio.gather(

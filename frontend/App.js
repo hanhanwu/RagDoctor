@@ -920,7 +920,7 @@ function ABTestPage({ selectedDataset }) {
           const hasReEvalRows = controlItems.some(item => item?.needs_re_eval === 1);
           const rag2Better = ciResultRef.current?.rag2Better === true;
           const controlSuggestions = parseSuggestions(controlAggReview?.improvement_suggestions);
-          const compareLessons = rag2Better ? (data.compare_patterns || []) : [];
+          const compareLessons = rag2Better ? (data.compare_patterns || []) : (data.rca_summary_patterns || []);
           const countsToPercentages = (counts) => {
             if (!counts) return {};
             const total = Object.values(counts).reduce((s, v) => s + v, 0);
