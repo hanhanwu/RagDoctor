@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import make_url
 from typing import Optional
 
-from .utils import run_all_in_processes, run_auto_eval, run_rca, run_compare_2rags, run_summarize_patterns, build_compare_df, rca_llm
+from .utils import run_all_in_processes, run_auto_eval, run_rca, run_compare_2rags, run_summarize_patterns, build_compare_df, build_why_lower_score_df, run_why_lower_score, rca_llm
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -110,26 +110,29 @@ def _db_save_rca(entries: list) -> None:
 
 # ── Compare DB cache helpers ──────────────────────────────────────────────────
 def _db_fetch_cached_compare(hash_1: str, hash_2: str):
-    """Return compare_patterns list if this pair is cached, else None.
-    Always query with sorted hashes to be order-independent."""
+    """Return dict with compare_patterns and compare_records for this pair,
+    or None if no row exists. Always queries with sorted hashes to be order-independent."""
     h1, h2 = sorted([hash_1, hash_2])
     conn = psycopg2.connect(DATABASE_URL)
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT compare_patterns FROM existing_compare_output WHERE config_hash_1 = %s AND config_hash_2 = %s",
+            "SELECT compare_patterns, compare_records FROM existing_compare_output WHERE config_hash_1 = %s AND config_hash_2 = %s",
             (h1, h2)
         )
         row = cur.fetchone()
         cur.close()
     finally:
         conn.close()
-    return row[0] if row else None
+    if row is None:
+        return None
+    return {"compare_patterns": row[0], "compare_records": row[1]}
 
 
-def _db_save_compare(hash_1: str, hash_2: str, compare_patterns: list) -> None:
-    """Persist compare_patterns for a pair — skips on conflict.
-    Always inserts with sorted hashes to be order-independent."""
+def _db_save_compare(hash_1: str, hash_2: str, patterns: list = None, compare_records: list = None) -> None:
+    """Upsert compare_patterns and/or compare_records for a pair into
+    existing_compare_output. Uses COALESCE so either field can be written
+    independently without overwriting the other. Always inserts with sorted hashes."""
     h1, h2 = sorted([hash_1, hash_2])
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = True
@@ -137,29 +140,81 @@ def _db_save_compare(hash_1: str, hash_2: str, compare_patterns: list) -> None:
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO existing_compare_output (config_hash_1, config_hash_2, compare_patterns)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (config_hash_1, config_hash_2) DO NOTHING
+            INSERT INTO existing_compare_output (config_hash_1, config_hash_2, compare_patterns, compare_records)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (config_hash_1, config_hash_2) DO UPDATE
+                SET compare_patterns = COALESCE(EXCLUDED.compare_patterns, existing_compare_output.compare_patterns),
+                    compare_records  = COALESCE(EXCLUDED.compare_records,  existing_compare_output.compare_records)
             """,
-            (h1, h2, json.dumps(compare_patterns))
+            (
+                h1, h2,
+                json.dumps(patterns) if patterns is not None else None,
+                json.dumps(compare_records) if compare_records is not None else None,
+            )
         )
         cur.close()
     finally:
         conn.close()
 
 
+# ── Why Lower Score DB cache helpers ─────────────────────────────────────────
+def _db_fetch_cached_why_lower_score(config_hash: str):
+    """Return why_lower_score_records list if cached for this config, else None.
+    Stored in the existing_rca_output row for the same config_hash."""
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT why_lower_score_records FROM existing_rca_output WHERE config_hash = %s",
+            (config_hash,)
+        )
+        row = cur.fetchone()
+        cur.close()
+    finally:
+        conn.close()
+    return row[0] if (row and row[0] is not None) else None
+
+
+def _db_save_why_lower_score(config_hash: str, records: list) -> None:
+    """Persist why_lower_score_records for a config by updating the existing
+    existing_rca_output row (assumes the rca_records row already exists)."""
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE existing_rca_output SET why_lower_score_records = %s WHERE config_hash = %s",
+            (json.dumps(records), config_hash)
+        )
+        cur.close()
+    finally:
+        conn.close()
+
+
+def _is_rag2_better(rca_1: list, rca_2: list) -> bool:
+    """Return True if RAG2 has a higher mean answer quality score than RAG1
+    (considering only records where needs_re_eval == 0)."""
+    valid_1 = [r['new_answer_quality_score'] for r in rca_1 if r.get('needs_re_eval') == 0]
+    valid_2 = [r['new_answer_quality_score'] for r in rca_2 if r.get('needs_re_eval') == 0]
+    if not valid_1 or not valid_2:
+        return False
+    return (sum(valid_2) / len(valid_2)) > (sum(valid_1) / len(valid_1))
+
+
 def fetch_raw_data(dataset_name: str):
     conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT data
-        FROM raw_datasets
-        WHERE dataset_name = %s
-        ORDER BY record_index
-    """, (dataset_name,))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT data
+            FROM raw_datasets
+            WHERE dataset_name = %s
+            ORDER BY record_index
+        """, (dataset_name,))
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        conn.close()
     return rows
 
 
@@ -358,26 +413,90 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
 
         # ── 3b. Per-record comparison + summarize patterns (only when configs differ) ─
         compare_patterns = None
+        rca_summary_patterns = None
         if not same_config:
-            compare_patterns = await asyncio.to_thread(
+            rag2_better = _is_rag2_better(rca_1, rca_2)
+            cached_compare = await asyncio.to_thread(
                 _db_fetch_cached_compare, config_hashes[0], config_hashes[1]
             )
-            if compare_patterns is None:
-                compare_records = build_compare_df(rca_1, rca_2, rag1_config, rag2_config)
-                if len(compare_records) > 0:
-                    compare_df = await run_compare_2rags(compare_records, rca_llm)
-                    compare_patterns = await run_summarize_patterns(
-                        compare_df, rca_llm,
-                        text_col='lessons_learned',
-                        pattern_focus='what RAG configuration changes led to performance differences'
-                    )
-                    if compare_patterns:
-                        await asyncio.to_thread(
-                            _db_save_compare, config_hashes[0], config_hashes[1], compare_patterns
+
+            if rag2_better:
+                compare_patterns = cached_compare.get("compare_patterns") if cached_compare else None
+                if compare_patterns is None:
+                    cached_compare_records = cached_compare.get("compare_records") if cached_compare else None
+                    if cached_compare_records is not None:
+                        compare_df = pd.DataFrame(cached_compare_records)
+                        print(f"Compare records cache hit for {config_hashes[0]} vs {config_hashes[1]}")
+                    else:
+                        raw_compare_records = build_compare_df(rca_1, rca_2, rag1_config, rag2_config)
+                        if len(raw_compare_records) > 0:
+                            compare_df = await run_compare_2rags(raw_compare_records, rca_llm)
+                            await asyncio.to_thread(
+                                _db_save_compare, config_hashes[0], config_hashes[1],
+                                None, compare_df.to_dict(orient='records')
+                            )
+                            print(f"Compare records saved for {config_hashes[0]} vs {config_hashes[1]}")
+                        else:
+                            compare_df = pd.DataFrame()
+                    if not compare_df.empty:
+                        compare_patterns = await run_summarize_patterns(
+                            compare_df, rca_llm,
+                            text_col='lessons_learned',
+                            pattern_focus='what RAG configuration changes led to performance differences'
                         )
-                        print(f"Compare patterns saved for {config_hashes[0]} vs {config_hashes[1]}")
+                        if compare_patterns:
+                            await asyncio.to_thread(
+                                _db_save_compare, config_hashes[0], config_hashes[1], compare_patterns
+                            )
+                            print(f"Compare patterns saved for {config_hashes[0]} vs {config_hashes[1]}")
+                else:
+                    print(f"Compare cache hit for {config_hashes[0]} vs {config_hashes[1]}")
             else:
-                print(f"Compare cache hit for {config_hashes[0]} vs {config_hashes[1]}")
+                rca_summary_patterns = cached_compare
+                if rca_summary_patterns is None:
+                    # Check per-config why_lower_score cache concurrently
+                    wls_cached_1, wls_cached_2 = await asyncio.gather(
+                        asyncio.to_thread(_db_fetch_cached_why_lower_score, config_hashes[0]),
+                        asyncio.to_thread(_db_fetch_cached_why_lower_score, config_hashes[1]),
+                    )
+                    wls_to_save = []
+                    if wls_cached_1 is not None:
+                        df1_out = pd.DataFrame(wls_cached_1)
+                        print(f"Why-lower-score cache hit for {config_hashes[0]}")
+                    else:
+                        df1_out = await run_why_lower_score(
+                            build_why_lower_score_df(rca_1, rag1_config), rca_llm
+                        )
+                        wls_to_save.append((config_hashes[0], df1_out.to_dict(orient='records')))
+
+                    if wls_cached_2 is not None:
+                        df2_out = pd.DataFrame(wls_cached_2)
+                        print(f"Why-lower-score cache hit for {config_hashes[1]}")
+                    else:
+                        df2_out = await run_why_lower_score(
+                            build_why_lower_score_df(rca_2, rag2_config), rca_llm
+                        )
+                        wls_to_save.append((config_hashes[1], df2_out.to_dict(orient='records')))
+
+                    for h, records in wls_to_save:
+                        await asyncio.to_thread(_db_save_why_lower_score, h, records)
+                        print(f"Why-lower-score saved for {h}")
+
+                    combined_insights_df = pd.concat(
+                        [df1_out[['insights']], df2_out[['insights']]], ignore_index=True
+                    )
+                    rca_summary_patterns = await run_summarize_patterns(
+                        combined_insights_df, rca_llm,
+                        text_col='insights',
+                        pattern_focus='root causes of low answer quality score'
+                    )
+                    if rca_summary_patterns:
+                        await asyncio.to_thread(
+                            _db_save_compare, config_hashes[0], config_hashes[1], rca_summary_patterns
+                        )
+                        print(f"RCA summary patterns saved for {config_hashes[0]} vs {config_hashes[1]}")
+                else:
+                    print(f"RCA summary cache hit for {config_hashes[0]} vs {config_hashes[1]}")
 
         # ── 4. Store in memory for polling ────────────────────────────────────
         _rca_results[rca_job_id] = {
@@ -386,6 +505,7 @@ async def _run_rca_task(rca_job_id: str, job_id: str):
             "rca_records_1": list(rca_1),
             "rca_records_2": list(rca_2),
             "compare_patterns": compare_patterns,
+            "rca_summary_patterns": rca_summary_patterns,
         }
     except Exception as e:
         traceback.print_exc()

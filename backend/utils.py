@@ -661,6 +661,19 @@ async def run_compare_2rags(input_records, llm, concurrency=2):
     return pd.DataFrame(output_lst)
 
 
+def _fmt_config(cfg):
+    return (f"Embedding model: {cfg.get('embedding_model', '')}, "
+            f"Top N: {cfg.get('top_n', 0)}, "
+            f"Semantic weight: {cfg.get('semantic_weight', 0.0)}, "
+            f"Answer LLM: {cfg.get('answer_gen_llm', '')}")
+
+def _fmt_rq(r):
+    return f"Score: {r.get('new_retrieval_quality_score', '')}\nReason: {r.get('rq_reasoning', '')}"
+
+def _fmt_aq(r):
+    return f"Score: {r.get('new_answer_quality_score', '')}\nReason: {r.get('aq_reasoning', '')}"
+
+
 def build_compare_df(rca_1, rca_2, rag1_config, rag2_config):
     """Zip rca_1 and rca_2 records by query to form _COMPARE_2RAGS_FIELDS columns.
 
@@ -668,18 +681,6 @@ def build_compare_df(rca_1, rca_2, rag1_config, rag2_config):
     are simple field lookups (O(N)). No LLM calls — pure Python formatting.
     Only includes records where needs_re_eval == 0 on both sides.
     """
-    def _fmt_config(cfg):
-        return (f"Embedding model: {cfg.get('embedding_model', '')}, "
-                f"Top N: {cfg.get('top_n', 0)}, "
-                f"Semantic weight: {cfg.get('semantic_weight', 0.0)}, "
-                f"Answer LLM: {cfg.get('answer_gen_llm', '')}")
-
-    def _fmt_rq(r):
-        return f"Score: {r.get('new_retrieval_quality_score', '')}\nReason: {r.get('rq_reasoning', '')}"
-
-    def _fmt_aq(r):
-        return f"Score: {r.get('new_answer_quality_score', '')}\nReason: {r.get('aq_reasoning', '')}"
-
     rag1_settings = _fmt_config(rag1_config)
     rag2_settings = _fmt_config(rag2_config)
     r2_by_query = {r['query']: r for r in rca_2}
@@ -724,6 +725,30 @@ async def why_lower_score_async(llm, record):
     return await _invoke_with_retry(chain, {k: record[k] for k in _WHY_LOWER_SCORE_FIELDS})
 
 
+def build_why_lower_score_df(rca_records, rag_config):
+    """Prepare input DataFrame for run_why_lower_score.
+
+    rag_settings string is computed once and reused (O(1)), score+reason strings
+    are simple field lookups (O(N)). No LLM calls — pure Python formatting.
+    Only includes records where needs_re_eval == 0 and new_answer_quality_score < 3.
+    """
+    rag_settings = _fmt_config(rag_config)
+
+    rows = []
+    for r in rca_records:
+        if r.get('needs_re_eval') == 1:
+            continue
+        if r.get('new_answer_quality_score', 3) >= 3:
+            continue
+        rows.append({
+            'query': r['query'],
+            'rag_settings': rag_settings,
+            'rag_rq_score_and_reasons': _fmt_rq(r),
+            'rag_aq_score_and_reasons': _fmt_aq(r),
+        })
+    return pd.DataFrame(rows)
+
+
 async def run_why_lower_score(input_df, llm, concurrency=2):
     sem = asyncio.Semaphore(concurrency)
 
@@ -755,6 +780,30 @@ async def run_summarize_patterns(input_df, llm, text_col, pattern_focus):
     text_list = input_df[text_col].tolist()
     result = await _invoke_with_retry(chain, {"text_list": text_list, "pattern_focus": pattern_focus})
     return result.patterns
+
+
+async def run_rca_summary(rca_1, rca_2, rag1_config, rag2_config, llm, 
+                          pattern_focus="root causes of low answer quality score", concurrency=2):
+    """When RAG2 is not statistically better than RAG1, run why_lower_score for both
+    RAGs concurrently, then summarize the combined insights into patterns.
+
+    Returns a list of pattern strings from run_summarize_patterns.
+    """
+    df1 = build_why_lower_score_df(rca_1, rag1_config)
+    df2 = build_why_lower_score_df(rca_2, rag2_config)
+
+    results = await asyncio.gather(
+        run_why_lower_score(df1, llm, concurrency=concurrency),
+        run_why_lower_score(df2, llm, concurrency=concurrency),
+    )
+    df1_out, df2_out = results
+
+    combined_insights_df = pd.concat(
+        [df1_out[['insights']], df2_out[['insights']]],
+        ignore_index=True
+    )
+
+    return await run_summarize_patterns(combined_insights_df, llm, text_col='insights', pattern_focus=pattern_focus)
 # ------------------------------------------ SUMMARIZE PATTERNS ------------------------------------------ #
 
 
