@@ -1324,11 +1324,11 @@ function ABTestPage({ selectedDataset }) {
                       <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
                         {/* Left: content */}
                         <div style={{ flex: 1, paddingRight: "16px" }}>
-                          {/* Improvement section */}
+                          {/* Needs Review section */}
                           {(rcaData.hasReEvalRows || rcaData.controlSuggestions?.length > 0) && (
                             <div style={{ marginBottom: rcaData.compareLessons?.length > 0 ? "20px" : 0 }}>
                               {rcaData.compareLessons?.length > 0 && (
-                                <div style={{ fontWeight: "bold", color: "#555", fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Improvement</div>
+                                <div style={{ fontWeight: "bold", color: "#555", fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Needs Review</div>
                               )}
                               {rcaData.hasReEvalRows && (
                                 <label style={{
