@@ -23,7 +23,8 @@
 
 
 ## 🚀 Roadmap (what we're building next)
-- [ ] Iterative improvement loop
+- [X] Iterative improvement loop
+- [ ] Improve auto evaluation by add context such as query quality, data input stats, system prompt, etc.
 - [ ] More precise root cause analysis
 - [ ] Automatic golden dataset generation and update
 - [ ] Automatic knowledge base selection
