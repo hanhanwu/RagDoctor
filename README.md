@@ -11,7 +11,7 @@
 * ⚡RAG Doctor reduces up to 90% of manual evaluation, compare RAG versions in minutes (not days).
 * 🔍 Pinpoint root causes across the pipeline, from knowledge base to retrieval, prompting, and outputs.
 * 📈 Turn evaluation into a fast, iterative loop 👉 [Try the Playground >>][2]
-<p align="center"> <img src="frontend/assets/github_anime.gif" alt="github animation" /> </p>
+<p align="center"> <img src="frontend/assets/github_anime_v3.gif" alt="github animation" /> </p>
 
 ## Why This Matters
 * Built from experience running production RAG systems where evaluation became the bottleneck.
