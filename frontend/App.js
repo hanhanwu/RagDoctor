@@ -1226,10 +1226,7 @@ function ABTestPage({ selectedDataset }) {
                       <div style={{
                         marginTop: "18px",
                         width: "80%",
-                        height: "1px",
-                        background: "#e6e6e6",
-                        borderRadius: 1,
-                        boxSizing: "border-box",
+                        borderTop: "1px solid #e6e6e6",
                         alignSelf: "center",
                       }} />
 
