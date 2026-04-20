@@ -1377,7 +1377,7 @@ function ABTestPage({ selectedDataset }) {
                         {/* Spacer between checklist and actions */}
                         <div style={{ width: "16px", flexShrink: 0 }} />
                         {/* Right: action column aligned bottom-right */}
-                        <div style={{ flex: "0 0 300px", display: "flex", flexDirection: "column", gap: "14px", fontSize: "0.9rem", whiteSpace: "nowrap", justifyContent: "flex-end", alignItems: "flex-end", alignSelf: "stretch" }}>
+                        <div style={{ flex: "0 0 300px", display: "flex", flexDirection: "column", gap: "14px", fontSize: "0.9rem", whiteSpace: "nowrap", justifyContent: "space-between", alignItems: "flex-end", alignSelf: "stretch" }}>
                           {pendingSwap && (
                             <div style={{
                               padding: "8px 12px", borderRadius: "6px",
@@ -1386,7 +1386,7 @@ function ABTestPage({ selectedDataset }) {
                               textAlign: "center",
                               maxWidth: "260px",
                             }}>
-                              ✅ Reference updates submitted. Click &quot;Run New A/B Test&quot; to re-evaluate.
+                              ✅ Reference updates submitted.
                             </div>
                           )}
                           {(checkedSuggestionsCount > 0 || pendingSwap) && (
