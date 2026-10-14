@@ -27,25 +27,7 @@
   * self-improving AI systems
 
 
-## 🚀 Roadmap (what we're building next)
-- [X] Iterative improvement loop
-- [ ] Improve auto evaluation by add context such as query quality, data input stats, system prompt, etc.
-- [ ] More precise root cause analysis
-- [ ] Automatic golden dataset generation and update
-- [ ] Automatic knowledge base selection
- 
-
-## 🤝 Join Me
-This is not just a tool, it helps <b>shape the reliability of future AI products</b>.
-
-Join me if you:
-* care about making AI products reliable
-* want to shape an emerging standard
-
-Ways to contribute:
-* Share feedback
-* Contribute to system design and development
-* Contribute to core algorithms
+## Dev Guide
 
 👉 [Project Setup Guide][1]
 
